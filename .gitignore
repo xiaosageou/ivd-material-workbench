@@ -1,0 +1,21 @@
+node_modules/
+dist/
+data/
+work/
+.env
+.env.*
+!.env.example
+npm-debug.log*
+
+# Local browser runs, test evidence, and runtime snapshots
+.playwright-cli/
+output/
+snapshots/
+.qdrant-initialized
+
+# Local databases and logs
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.log

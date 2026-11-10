@@ -1,0 +1,12 @@
+ALTER TABLE ai_jobs ADD COLUMN usage_input_tokens INTEGER NOT NULL DEFAULT 0 CHECK (usage_input_tokens >= 0);
+ALTER TABLE ai_jobs ADD COLUMN usage_output_tokens INTEGER NOT NULL DEFAULT 0 CHECK (usage_output_tokens >= 0);
+ALTER TABLE ai_jobs ADD COLUMN usage_cache_read_tokens INTEGER NOT NULL DEFAULT 0 CHECK (usage_cache_read_tokens >= 0);
+ALTER TABLE ai_jobs ADD COLUMN usage_cache_write_tokens INTEGER NOT NULL DEFAULT 0 CHECK (usage_cache_write_tokens >= 0);
+ALTER TABLE ai_jobs ADD COLUMN usage_total_tokens INTEGER NOT NULL DEFAULT 0 CHECK (usage_total_tokens >= 0);
+ALTER TABLE ai_jobs ADD COLUMN usage_request_count INTEGER NOT NULL DEFAULT 0 CHECK (usage_request_count >= 0);
+ALTER TABLE ai_jobs ADD COLUMN usage_pending_count INTEGER NOT NULL DEFAULT 0 CHECK (usage_pending_count >= 0);
+ALTER TABLE ai_jobs ADD COLUMN usage_unknown_count INTEGER NOT NULL DEFAULT 0 CHECK (usage_unknown_count >= 0);
+ALTER TABLE ai_jobs ADD COLUMN usage_status TEXT NOT NULL DEFAULT 'none' CHECK (usage_status IN ('none','pending','known','unknown','partial_unknown'));
+ALTER TABLE ai_jobs ADD COLUMN usage_stop_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE ai_jobs ADD COLUMN usage_last_response_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE ai_jobs ADD COLUMN usage_last_provider_stop_reason TEXT NOT NULL DEFAULT '';
