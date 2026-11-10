@@ -72,9 +72,29 @@ async function waitForHealth(){
 }
 try {
   const migrationResult=await run(['src/migration-smoke.ts']);assert(migrationResult.includes('MIGRATION SMOKE PASS'),'v1 业务数据增量迁移回归');
-  await run(['src/cli.ts','admin-init']);
   await waitForHealth();
-  const login=await call('/api/auth/login',{email:'admin@example.test',password:'smoke-password-long-enough'},'POST','');
+  equal((await call('/api/auth/registration-status',undefined,'GET','')).data.firstAdmin,true,'空库显示首位管理员注册');
+  const firstPair=await Promise.all([
+    call('/api/auth/register',{name:'Test Admin',email:'admin@example.test',password:'smoke-password-long-enough',role:'ADMIN'},'POST',''),
+    call('/api/auth/register',{name:'申请成员',email:'pending@example.test',password:'pending-password-long',role:'ADMIN'},'POST','')]);
+  equal(firstPair.filter(x=>x.data.firstAdmin===true).length,1,'并发注册仅一位首位管理员');
+  const chosenAdmin=firstPair[0].data.firstAdmin?'admin@example.test':'pending@example.test';
+  const chosenPassword=firstPair[0].data.firstAdmin?'smoke-password-long-enough':'pending-password-long';
+  const pendingEmail=firstPair[0].data.firstAdmin?'pending@example.test':'admin@example.test';
+  const pendingPassword=firstPair[0].data.firstAdmin?'pending-password-long':'smoke-password-long-enough';
+  const firstLogin=await call('/api/auth/login',{email:chosenAdmin,password:chosenPassword},'POST','');
+  equal(firstLogin.status,200,'首位管理员可登录');
+  const firstCookie=(firstLogin.response.headers.get('set-cookie')||'').split(';')[0];
+  equal((await call('/api/auth/login',{email:pendingEmail,password:pendingPassword},'POST','')).status,401,'待审批用户不能登录');
+  const listed=await call('/api/users',undefined,'GET',firstCookie);
+  const pendingUser=listed.data.find((u:any)=>u.email===pendingEmail);
+  equal(pendingUser.role,'RESEARCHER','注册请求不能指定管理员角色');
+  equal(pendingUser.registration_pending,1,'申请显示待审批');
+  equal((await call('/api/users/'+pendingUser.id,{active:true},'PATCH','')).status,401,'匿名用户不能审批');
+  equal((await call('/api/users/'+pendingUser.id,{active:true},'PATCH',firstCookie)).status,200,'管理员可批准');
+  equal((await call('/api/auth/login',{email:pendingEmail,password:pendingPassword},'POST','')).status,200,'批准后可登录');
+
+  const login=await call('/api/auth/login',{email:chosenAdmin,password:chosenPassword},'POST','');
   equal(login.status,200,'管理员登录');
   cookie=(login.response.headers.get('set-cookie')||'').split(';')[0];
   assert(cookie.includes('ivd_session='),'登录会话 Cookie');
@@ -255,7 +275,7 @@ try {
   const reportKnowledgeInput=createHash('sha256').update('synthetic-report-knowledge-input').digest('hex');
   const reportKnowledgeVector=Buffer.from(Float32Array.from([1,0,0]).buffer);
   const reportKnowledgeVectorHash=createHash('sha256').update(reportKnowledgeVector).digest('hex');
-  const reportKnowledgeAdmin=reportKnowledgeDb.prepare("SELECT id FROM users WHERE email='admin@example.test'").get() as any;
+  const reportKnowledgeAdmin=reportKnowledgeDb.prepare('SELECT id FROM users WHERE email=?').get(chosenAdmin) as any;
   reportKnowledgeDb.prepare(`INSERT INTO literature_embedding_profiles(id,fingerprint,endpoint_url,model,dimensions,distance,chunker_version,parser_version,created_by)
     VALUES (?,?,?,?,3,'Cosine','synthetic','synthetic',?)`).run(reportKnowledgeProfile,createHash('sha256').update('synthetic-report-profile').digest('hex'),
     'http://127.0.0.1:1/v1','synthetic-backup-only',reportKnowledgeAdmin.id);
@@ -304,7 +324,7 @@ try {
   const oldDb=new DatabaseSync(join(restoreDir,'ivd.sqlite'));oldDb.exec('PRAGMA journal_mode=DELETE; CREATE TABLE legacy_marker(value TEXT); INSERT INTO legacy_marker VALUES (\'keep-before-restore\');');oldDb.close();
   mkdirSync(join(restoreDir,'attachments'),{recursive:true});writeFileSync(join(restoreDir,'attachments','old.txt'),'preserve-before-restore');
   const restored=await run(['--experimental-strip-types','src/restore.ts',`--file=${archivePath}`],{DATA_DIR:restoreDir});assert(restored.includes('备份恢复完成'),'备份恢复命令完成');
-  const restoredDb=restoreValidationDb=new DatabaseSync(join(restoreDir,'ivd.sqlite'));equal((restoredDb.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as any).version,12,'恢复后迁移版本为 12');equal((restoredDb.prepare("SELECT name FROM materials WHERE code='SMOKE-NACl'").get() as any).name,'氯化钠验证物料（已核验）','恢复保留物料业务数据');equal((restoredDb.prepare('SELECT COUNT(*) AS n FROM attachments').get() as any).n,1,'恢复保留既有通用附件索引');
+  const restoredDb=restoreValidationDb=new DatabaseSync(join(restoreDir,'ivd.sqlite'));equal((restoredDb.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as any).version,13,'恢复后迁移版本为 13');equal((restoredDb.prepare("SELECT name FROM materials WHERE code='SMOKE-NACl'").get() as any).name,'氯化钠验证物料（已核验）','恢复保留物料业务数据');equal((restoredDb.prepare('SELECT COUNT(*) AS n FROM attachments').get() as any).n,1,'恢复保留既有通用附件索引');
   equal((restoredDb.prepare("SELECT status FROM report_knowledge_index_jobs WHERE id='smoke-report-index-job'").get() as any).status,'complete','备份恢复保留报告知识索引状态');
   const restoredKnowledgeVector=restoredDb.prepare('SELECT vector_blob,vector_sha256,dimensions FROM report_knowledge_embedding_cache WHERE profile_id=? AND input_sha256=?').get(reportKnowledgeProfile,reportKnowledgeInput) as any;
   assert(restoredKnowledgeVector&&restoredKnowledgeVector.dimensions===3,'备份恢复包含报告知识向量缓存维度');

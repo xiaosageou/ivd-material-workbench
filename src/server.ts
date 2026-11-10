@@ -147,6 +147,28 @@ function materialSummary(material: Row): Row {
   return { ...material, total_quantity: fmt(total), lots: balances };
 }
 
+app.get('/api/auth/registration-status', route((_req, res) => {
+  const count = Number((db.prepare('SELECT COUNT(*) AS n FROM users').get() as Row).n);
+  res.json({ firstAdmin: count === 0 });
+}));
+app.post('/api/auth/register', route((req, res) => {
+  const name = required(req.body?.name, '姓名');
+  const email = required(req.body?.email, '邮箱').toLowerCase();
+  const password = required(req.body?.password, '密码');
+  if (name.length > 100 || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length > 256) throw new Error('姓名、邮箱或密码格式无效');
+  const hash = passwordHash(password);
+  const userId = id('usr_');
+  const first = transaction(() => {
+    const firstAdmin = Number((db.prepare('SELECT COUNT(*) AS n FROM users').get() as Row).n) === 0;
+    if (db.prepare('SELECT id FROM users WHERE email=? COLLATE NOCASE').get(email)) throw new Error('该邮箱已注册，请登录或联系管理员');
+    db.prepare('INSERT INTO users(id,name,email,password_hash,role,active,registration_pending) VALUES (?,?,?,?,?,?,?)')
+      .run(userId, name, email, hash, firstAdmin ? 'ADMIN' : 'RESEARCHER', firstAdmin ? 1 : 0, firstAdmin ? 0 : 1);
+    audit(firstAdmin ? userId : null, firstAdmin ? 'user.first_admin_register' : 'user.registration_request', 'user', userId, { email });
+    return firstAdmin;
+  });
+  res.status(201).json({ firstAdmin: first, message: first ? '管理员账户已创建，请登录。' : '注册申请已提交，请等待管理员审批。' });
+}));
+
 app.post('/api/auth/login', route((req, res) => {
   const email = required(req.body?.email, '邮箱');
   const password = required(req.body?.password, '密码');
@@ -355,7 +377,7 @@ app.get('/api/movements', requireAuth, route((req, res) => {
   res.json(rows);
 }));
 
-app.get('/api/users', requireAuth, requireAdmin, route((req, res) => res.json(db.prepare('SELECT id,name,email,role,active,created_at FROM users ORDER BY created_at').all())));
+app.get('/api/users', requireAuth, requireAdmin, route((req, res) => res.json(db.prepare('SELECT id,name,email,role,active,registration_pending,created_at FROM users ORDER BY registration_pending DESC,created_at').all())));
 app.post('/api/users', requireAuth, requireAdmin, route((req, res) => {
   const b = req.body ?? {};
   const userId = id('usr_');
@@ -368,10 +390,11 @@ app.post('/api/users', requireAuth, requireAdmin, route((req, res) => {
 app.patch('/api/users/:id', requireAuth, requireAdmin, route((req, res) => {
   const target = db.prepare('SELECT * FROM users WHERE id=?').get(param(req)) as Row | undefined;
   if (!target) return res.status(404).json({ error: '用户不存在' });
+  if (target.registration_pending && typeof req.body?.active !== 'boolean') throw new Error('请明确批准或拒绝注册申请');
   if (target.id === req.user!.id && req.body?.active === false) throw new Error('当前登录管理员不能停用自身');
   const role = req.body?.role ? enumValue(req.body.role, ['ADMIN','RESEARCHER'], '角色') : target.role;
-  db.prepare('UPDATE users SET role=?,active=? WHERE id=?').run(role, req.body?.active === false ? 0 : 1, target.id);
-  audit(req.user!.id, 'user.update', 'user', target.id, { role, active: req.body?.active !== false });
+  db.prepare('UPDATE users SET role=?,active=?,registration_pending=0 WHERE id=?').run(role, req.body?.active === false ? 0 : 1, target.id);
+  audit(req.user!.id, target.registration_pending ? (req.body?.active ? 'user.registration_approve' : 'user.registration_reject') : 'user.update', 'user', target.id, { role, active: req.body?.active !== false });
   res.json({ ok: true });
 }));
 

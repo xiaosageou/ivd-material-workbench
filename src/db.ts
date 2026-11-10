@@ -156,6 +156,16 @@ if (current < 12) {
   }
 }
 
+if (current < 13) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.exec(readFileSync(path.resolve('migrations/013_registration.sql'), 'utf8'));
+    db.prepare('INSERT INTO schema_migrations(version) VALUES (?)').run(13);
+    db.exec('COMMIT');
+    current = 13;
+  } catch (error) { db.exec('ROLLBACK'); throw error; }
+}
+
 export function transaction<T>(work: () => T): T {
   db.exec('BEGIN IMMEDIATE');
   try {

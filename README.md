@@ -33,7 +33,7 @@
 3. 开发时，分别运行 `npm run dev` 和 `npm run dev:client`。
 4. 单服务运行时先执行 `npm run build`，再执行 `npm start`；网页和 API 共用 `PORT`。
 
-系统不会自动创建管理员或演示账号。只有手动执行 `npm run seed:demo` 才会添加带有演示来源标记的样例数据。
+空数据库的首个网页注册账户成为管理员；后续注册由管理员在“系统设置 → 用户与角色”审批。首次部署应在对外开放前立即完成管理员注册，以免他人抢先创建。也可使用 `npm run setup:admin` 初始化管理员。系统不会自动创建演示账号。只有手动执行 `npm run seed:demo` 才会添加带有演示来源标记的样例数据。
 
 ## Docker Compose
 
@@ -42,11 +42,7 @@
 ```powershell
 docker compose pull
 docker compose up -d
-$env:ADMIN_NAME = '研发管理员'
-$env:ADMIN_EMAIL = 'admin@organization.example'
-$env:ADMIN_PASSWORD = '替换为至少12位的组织密码'
-docker compose exec -e ADMIN_NAME -e ADMIN_EMAIL -e ADMIN_PASSWORD ivd-workbench npm run setup:admin
-Remove-Item Env:ADMIN_NAME,Env:ADMIN_EMAIL,Env:ADMIN_PASSWORD
+# 打开登录页面，注册首位管理员；后续账户由管理员审批。
 ```
 
 **已有命名卷的部署升级前必须迁移数据**：新目录不会自动读取旧卷。先用旧版 Compose 停止所有服务，备份数据，再确认 `docker volume ls` 中实际的应用卷和 Qdrant 卷名。创建上述两个空目录后，分别将旧卷完整内容（包括隐藏文件）复制到对应目录，保留文件权限和所有权；确认数据库、附件、密钥文件及 Qdrant 数据均已复制，再使用新版 Compose 启动。不要删除旧卷，直至完成验证。旧卷名通常带 Compose 项目前缀，不一定恰好叫 `ivd-data` 或 `qdrant-data`。
