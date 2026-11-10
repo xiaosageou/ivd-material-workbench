@@ -14,7 +14,7 @@ services:
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
     volumes:
-      - ivd-data:/app/data
+      - ${IVD_DATA_PATH:-/opt/ivd-material/data}:/app/data
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
@@ -30,7 +30,7 @@ services:
       DATA_DIR: /app/data
       IVD_AI_API_KEY: ${IVD_AI_API_KEY:-}
     volumes:
-      - ivd-data:/app/data
+      - ${IVD_DATA_PATH:-/opt/ivd-material/data}:/app/data
     depends_on:
       ivd-workbench:
         condition: service_healthy
@@ -49,7 +49,7 @@ services:
     expose:
       - "6333"
     volumes:
-      - qdrant-data:/qdrant/storage
+      - ${IVD_QDRANT_PATH:-/opt/ivd-material/qdrant}:/qdrant/storage
 
   ivd-literature-worker:
     image: ${IVD_IMAGE:-ghcr.io/xiaosageou/ivd-material-workbench:latest}
@@ -65,7 +65,7 @@ services:
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
     volumes:
-      - ivd-data:/app/data
+      - ${IVD_DATA_PATH:-/opt/ivd-material/data}:/app/data
     depends_on:
       ivd-workbench:
         condition: service_healthy
@@ -89,7 +89,7 @@ services:
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
     volumes:
-      - ivd-data:/app/data
+      - ${IVD_DATA_PATH:-/opt/ivd-material/data}:/app/data
     depends_on:
       ivd-workbench:
         condition: service_healthy
@@ -114,9 +114,7 @@ services:
       ivd-workbench:
         condition: service_healthy
 
-# 持久卷：数据库及页面保存的 API Key 存放于 ivd-data；向量数据存放于 qdrant-data。
+# Caddy 证书与配置仍保存在 Docker 命名卷中。
 volumes:
-  ivd-data:
-  qdrant-data:
   caddy-data:
   caddy-config:

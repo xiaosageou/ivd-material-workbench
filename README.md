@@ -37,7 +37,7 @@
 
 ## Docker Compose
 
-复制 `.env.example` 为 `.env`，按需设置端口和 Cookie。Compose 会启动 Web/API、AI Worker、文献 Worker、研发报告知识 Worker 与 Qdrant；应用和三个 Worker 挂载同一个 `ivd-data` 卷，Qdrant 使用独立的 `qdrant-data` 卷。镜像由 GitHub Actions 发布到 `ghcr.io/xiaosageou/ivd-material-workbench`。私有镜像需要先使用有 `read:packages` 权限的 GitHub 凭据执行 `docker login ghcr.io`；可通过 `IVD_IMAGE` 指定其他镜像或固定版本。直接 HTTP 部署（例如受控内网）使用 `COOKIE_SECURE=false`：
+复制 `.env.example` 为 `.env`，按需设置端口和 Cookie。Compose 会启动 Web/API、AI Worker、文献 Worker、研发报告知识 Worker 与 Qdrant；应用和三个 Worker 共用宿主机目录 `/opt/ivd-material/data`，Qdrant 使用 `/opt/ivd-material/qdrant`；可在 `.env` 中通过 `IVD_DATA_PATH` 和 `IVD_QDRANT_PATH` 修改。容器内路径固定为 `/app/data` 和 `/qdrant/storage`。Caddy 证书仍存于 Docker 命名卷。镜像由 GitHub Actions 发布到 `ghcr.io/xiaosageou/ivd-material-workbench`。私有镜像需要先使用有 `read:packages` 权限的 GitHub 凭据执行 `docker login ghcr.io`；可通过 `IVD_IMAGE` 指定其他镜像或固定版本。直接 HTTP 部署（例如受控内网）使用 `COOKIE_SECURE=false`：
 
 ```powershell
 docker compose pull
@@ -49,13 +49,23 @@ docker compose exec -e ADMIN_NAME -e ADMIN_EMAIL -e ADMIN_PASSWORD ivd-workbench
 Remove-Item Env:ADMIN_NAME,Env:ADMIN_EMAIL,Env:ADMIN_PASSWORD
 ```
 
+**已有命名卷的部署升级前必须迁移数据**：新目录不会自动读取旧卷。先用旧版 Compose 停止所有服务，备份数据，再确认 `docker volume ls` 中实际的应用卷和 Qdrant 卷名。创建上述两个空目录后，分别将旧卷完整内容（包括隐藏文件）复制到对应目录，保留文件权限和所有权；确认数据库、附件、密钥文件及 Qdrant 数据均已复制，再使用新版 Compose 启动。不要删除旧卷，直至完成验证。旧卷名通常带 Compose 项目前缀，不一定恰好叫 `ivd-data` 或 `qdrant-data`。
+
+新部署可先在 Linux 宿主机创建目录：
+
+```bash
+sudo mkdir -p /opt/ivd-material/data /opt/ivd-material/qdrant
+```
+
+确保运行容器的用户可读写对应目录，并限制宿主机上对数据目录的访问：其中包含明文 API Key。使用自定义 `.env` 路径时，创建对应的自定义目录。
+
 生产模式默认给会话 Cookie 加 `Secure`。直接 HTTP 访问必须显式设置 `COOKIE_SECURE=false`；使用 HTTPS 时设为 `true`。启用 Caddy 配置前，在 `.env` 中填写 DNS 已指向此服务器的 `DOMAIN` 并设置 `COOKIE_SECURE=true`，随后运行：
 
 ```powershell
 docker compose --profile https up -d
 ```
 
-Caddy 监听 80/443 并将 HTTPS 请求转发给应用。DNS 和防火墙需允许证书签发与续期流量进入 80/443。真实聊天模型由管理员在“模型设置”中配置 API Key、provider、模型 ID 和服务地址；密钥保存在服务端数据目录 `ai-api-key` 文件中，也可通过 `IVD_AI_API_KEY` 环境变量提供，页面保存的密钥优先。文献与研发报告知识索引共用向量化配置；管理员可在“文献向量化”中设置 API Key、地址、模型和维度。密钥存于数据目录的 `embedding-api-key` 文件，也可使用环境变量 `IVD_EMBEDDING_API_KEY`，本地文件优先。报告知识与文献分别写入独立 Qdrant 集合，启用在线向量化会将页面所示资料内容发送至配置的 Embedding endpoint。Qdrant 使用内部地址 `http://qdrant:6333`，可通过 `QDRANT_API_KEY` 启用 API 密钥。聊天模型密钥不写入 SQLite 或浏览器；本地文件为明文，请限制数据目录访问权限。向量化密钥同样为本地明文文件，请限制数据目录访问。当前开发环境没有 Docker；Compose 容器、共享卷、容器网络与 Caddy 证书签发仍需在部署主机验收。
+Caddy 监听 80/443 并将 HTTPS 请求转发给应用。DNS 和防火墙需允许证书签发与续期流量进入 80/443。真实聊天模型由管理员在“模型设置”中配置 API Key、provider、模型 ID 和服务地址；密钥保存在服务端数据目录 `ai-api-key` 文件中，也可通过 `IVD_AI_API_KEY` 环境变量提供，页面保存的密钥优先。文献与研发报告知识索引共用向量化配置；管理员可在“文献向量化”中设置 API Key、地址、模型和维度。密钥存于数据目录的 `embedding-api-key` 文件，也可使用环境变量 `IVD_EMBEDDING_API_KEY`，本地文件优先。报告知识与文献分别写入独立 Qdrant 集合，启用在线向量化会将页面所示资料内容发送至配置的 Embedding endpoint。Qdrant 使用内部地址 `http://qdrant:6333`，可通过 `QDRANT_API_KEY` 启用 API 密钥。聊天模型密钥不写入 SQLite 或浏览器；本地文件为明文，请限制数据目录访问权限。向量化密钥同样为本地明文文件，请限制数据目录访问。当前开发环境没有 Docker；Compose 容器、宿主机目录挂载、容器网络与 Caddy 证书签发仍需在部署主机验收。
 
 ## 库存、单位与配方规则
 
