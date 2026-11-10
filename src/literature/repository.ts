@@ -16,10 +16,6 @@ type Row = Record<string, any>;
 
 export const LITERATURE_PARSER_VERSION = 'literature-parser-2';
 export const LITERATURE_CHUNKER_VERSION = 'literature-chunker-2';
-export const LITERATURE_FILE_LIMIT = 25 * 1024 * 1024;
-export const LITERATURE_BATCH_LIMIT = 100 * 1024 * 1024;
-export const LITERATURE_MAX_BATCH_FILES = 8;
-const EXTENSIONS = new Set(['.pdf', '.docx', '.txt', '.md']);
 const FILE_MIME: Record<string, string> = {
   '.pdf': 'application/pdf',
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -59,16 +55,15 @@ function safeOriginalName(value: unknown) {
 }
 
 export function validateLiteratureFile(file: UploadFile) {
-  if (!file.buffer?.length || file.buffer.length > LITERATURE_FILE_LIMIT) throw new Error('单份文献文件需大于 0 且不超过 25 MB');
+  if (!file.buffer?.length) throw new Error('文献文件为空');
   const originalName = safeOriginalName(file.originalname);
   const extension = path.extname(originalName).toLowerCase();
-  if (!EXTENSIONS.has(extension)) throw new Error('文献仅支持 PDF、DOCX、TXT、Markdown 文件');
   if (extension === '.pdf' && !file.buffer.subarray(0, 5).equals(Buffer.from('%PDF-'))) throw new Error('PDF 文件内容与扩展名不匹配');
-  if (extension === '.docx' && !(file.buffer.length >= 4 && file.buffer[0] === 0x50 && file.buffer[1] === 0x4b && file.buffer[2] === 0x03 && file.buffer[3] === 0x04)) {
-    throw new Error('DOCX 文件内容与扩展名不匹配');
+  if (['.docx', '.xlsx'].includes(extension) && !(file.buffer.length >= 4 && file.buffer[0] === 0x50 && file.buffer[1] === 0x4b && file.buffer[2] === 0x03 && file.buffer[3] === 0x04)) {
+    throw new Error('Office 文件内容与扩展名不匹配');
   }
   if (['.txt', '.md'].includes(extension) && file.buffer.includes(0)) throw new Error('文本文件含二进制内容');
-  return { originalName, extension, mimeType: FILE_MIME[extension] };
+  return { originalName, extension, mimeType: FILE_MIME[extension] || 'application/octet-stream' };
 }
 
 function normalizedAuthors(value: unknown) {
@@ -136,14 +131,14 @@ function metadataSnapshot(values: ReturnType<typeof normalizeLiteratureInput>) {
 
 function storeFile(file: UploadFile) {
   const info = validateLiteratureFile(file);
-  const storageKey = `lit_${randomUUID()}${info.extension}`;
+  const storageKey = `lit_${randomUUID()}${['.pdf','.docx','.txt','.md'].includes(info.extension) ? info.extension : '.bin'}`;
   const absolutePath = path.join(attachmentDir, storageKey);
   writeFileSync(absolutePath, file.buffer, { flag: 'wx' });
   return { ...info, storageKey, sizeBytes: file.buffer.length, sha256: hash(file.buffer), absolutePath };
 }
 
 export function safeLiteraturePath(storageKey: string) {
-  if (path.basename(storageKey) !== storageKey || !/^lit_[0-9a-f-]{36}\.(?:pdf|docx|txt|md)$/.test(storageKey)) return undefined;
+  if (path.basename(storageKey) !== storageKey || !/^lit_[0-9a-f-]{36}\.(?:pdf|docx|txt|md|bin)$/.test(storageKey)) return undefined;
   const absolutePath = path.join(attachmentDir, storageKey);
   return existsSync(absolutePath) ? absolutePath : undefined;
 }

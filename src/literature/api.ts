@@ -3,7 +3,7 @@ import multer from 'multer';
 import { db } from '../db.ts';
 import { getLiteratureWorkerStatus } from './worker.ts';
 import {
-  LITERATURE_BATCH_LIMIT, LITERATURE_FILE_LIMIT, LITERATURE_MAX_BATCH_FILES, auditLiterature,
+  auditLiterature,
   collectionById, createCollection, createLiteratureRecord, deleteCollection, duplicateCandidates,
   getLiteratureDetails, getLiteratureStats, hash, listLiteratureCollections, listLiteratureRows,
   listDeletedLiterature,
@@ -20,11 +20,8 @@ import { searchLiterature } from './search.ts';
 type Row = Record<string, any>;
 type AuthRequest = Request & { user?: LiteratureActor };
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: LITERATURE_FILE_LIMIT, files: LITERATURE_MAX_BATCH_FILES, fields: 30, fieldSize: 1_000_000, parts: 40 },
-});
-const batchUpload = upload.array('files', LITERATURE_MAX_BATCH_FILES);
+const upload = multer({ storage: multer.memoryStorage() });
+const batchUpload = upload.array('files');
 const versionUpload = upload.single('file');
 const route = (handler: (req: AuthRequest, res: Response) => unknown | Promise<unknown>) => (req: AuthRequest, res: Response, next: NextFunction) => {
   try { Promise.resolve(handler(req, res)).catch(next); } catch (error) { next(error); }
@@ -52,12 +49,9 @@ function actorCanEdit(req: AuthRequest, res: Response, item: Row | undefined) {
 
 function uploadParser(parser: RequestHandler): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
-    const contentLength = Number(req.headers['content-length'] || 0);
-    if (contentLength > LITERATURE_BATCH_LIMIT + 2 * 1024 * 1024) return res.status(413).json({ error: '单批文献上传总量不超过 100 MB' });
     parser(req, res, error => {
       if (!error) return next();
-      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: '单份文献文件不超过 25 MB' });
-      if (error instanceof multer.MulterError) return res.status(400).json({ error: '文献上传批次格式无效或文件数量超过 8 份' });
+      if (error instanceof multer.MulterError) return res.status(400).json({ error: '文献上传批次格式无效' });
       return next(error);
     });
   };
@@ -170,8 +164,6 @@ export function installLiteratureRoutes(app: Express, requireAuth: RequestHandle
     const body = req.body || {};
     const records = parseRecordList(body.records);
     if (!files.length && records.length) return res.status(400).json({ error: '批量书目信息需要同时上传文献文件' });
-    if (files.length > LITERATURE_MAX_BATCH_FILES) return res.status(400).json({ error: '单批文献最多 8 份' });
-    if (files.reduce((sum, file) => sum + file.size, 0) > LITERATURE_BATCH_LIMIT) return res.status(413).json({ error: '单批文献上传总量不超过 100 MB' });
     if (!files.length) {
       const values = normalizeLiteratureInput(body);
       const duplicates = duplicateCandidates(values);

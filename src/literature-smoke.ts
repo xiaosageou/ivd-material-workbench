@@ -185,6 +185,15 @@ try {
     }
   } finally { restoredDb.close(); }
 
+  const largeBatch = new FormData();
+  for (let i = 0; i < 9; i++) largeBatch.append('files', new Blob([i === 0 ? new Uint8Array(26 * 1024 * 1024) : new Uint8Array([i])]), `fixture-${i}.dat`);
+  const largeResult = await call('/api/literature', largeBatch, 'POST', memberCookie);
+  equal(largeResult.status, 201, '超过旧大小与数量门槛可上传');
+  equal(largeResult.data.successCount, 9, '任意格式文件全部保存');
+  const binaryItem = largeResult.data.results[0].item;
+  const binaryDownload = await call(`/api/literature/${binaryItem.id}/versions/${binaryItem.currentVersion.id}/download`, undefined, 'GET', memberCookie);
+  equal(binaryDownload.status, 200, '其他格式可下载');
+  equal((binaryDownload.data as ArrayBuffer).byteLength, 26 * 1024 * 1024, '大文件下载完整');
   console.log('LITERATURE SMOKE PASS: 隔离数据库迁移、批次逐份上传、书目/DOI候选、中文关键词检索、创建者/管理员权限、409修订冲突、全文版本与安全下载、软删除/恢复、集合与标签、备份恢复及全部文献文件SHA-256均通过。');
 } finally {
   if (server) {

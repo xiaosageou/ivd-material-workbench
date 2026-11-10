@@ -135,10 +135,11 @@ async function parsePdf(buffer: Buffer, shouldCancel: () => boolean): Promise<Li
 export async function parseLiteratureFile(fileName: string, buffer: Buffer, shouldCancel: () => boolean = () => false): Promise<LiteratureParseResult> {
   const extension = path.extname(fileName).toLowerCase();
   if (extension === '.pdf') return parsePdf(buffer, shouldCancel);
+  if (['.xlsx', '.csv', '.tsv'].includes(extension)) return parserResultFromResearch(await parseResearchFile(fileName, buffer));
   if (extension === '.docx') return parseDocx(buffer);
   if (extension === '.txt' || extension === '.md') return parseText(buffer, extension);
   return { status: 'unsupported', format: extension.slice(1), chunks: [], pageCount: 0, pagesRead: 0, textLength: 0,
-    coverage: { parsed: false, reason: '当前文献解析仅支持 PDF、DOCX、TXT、Markdown。', ocr: { configured: false, used: false } } };
+    coverage: { parsed: false, reason: '该格式已保存原文件，当前未配置文本解析器。', ocr: { configured: false, used: false } } };
 }
 
 export function parserResultFromResearch(parsed: ParseResult): LiteratureParseResult {

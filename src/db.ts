@@ -166,6 +166,19 @@ if (current < 13) {
   } catch (error) { db.exec('ROLLBACK'); throw error; }
 }
 
+if (current < 14) {
+  db.exec('PRAGMA foreign_keys=OFF');
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.exec(readFileSync(path.resolve('migrations/014_literature_file_formats.sql'), 'utf8'));
+    if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('文献文件迁移后关联校验失败');
+    db.prepare('INSERT INTO schema_migrations(version) VALUES (?)').run(14);
+    db.exec('COMMIT');
+    current = 14;
+  } catch (error) { db.exec('ROLLBACK'); throw error; }
+  finally { db.exec('PRAGMA foreign_keys=ON'); }
+}
+
 export function transaction<T>(work: () => T): T {
   db.exec('BEGIN IMMEDIATE');
   try {

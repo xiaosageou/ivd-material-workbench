@@ -143,11 +143,6 @@ export default function LiteratureLibrary({ notify, onAskAssistant, initialItemI
     setBusy(true); setError('');
     if (!retryingFailedFiles) { setUploadError(''); setBatchResults([]); }
     const form = new FormData(formElement);
-    if (selectedFiles.some(selected => selected.file.size > 25 * 1024 * 1024)
-      || selectedFiles.reduce((sum, selected) => sum + selected.file.size, 0) > 100 * 1024 * 1024) {
-      setUploadError('每份文件不超过 25 MB，每批合计不超过 100 MB。');
-      uploadInFlight.current = false; setBusy(false); return;
-    }
     const authors = String(form.get('authors') || '').split(/[;；\n]/).map(value => value.trim()).filter(Boolean);
     const keywords = String(form.get('keywords') || '').split(/[;,，；]/).map(value => value.trim()).filter(Boolean);
     const tags = String(form.get('tags') || '').split(/[;,，；]/).map(value => value.trim()).filter(Boolean);
@@ -334,7 +329,7 @@ export default function LiteratureLibrary({ notify, onAskAssistant, initialItemI
           {detail.abstract && <section className="literature-section"><SectionHeading title="摘要" badge={detail.currentVersion ? '书目信息' : '用户录入'}/><p className="literature-abstract">{detail.abstract}</p></section>}
           <section className="literature-section">
             <SectionHeading title="全文与版本" badge={`${detail.versions.length} 个版本`}/>
-            {canEdit && <label className="literature-replace"><span>页面通过替换文件更新正文，历史版本会保留</span><input type="file" accept=".pdf,.docx,.txt,.md" disabled={busy} onChange={event => { void replaceFile(event.target.files?.[0]); event.currentTarget.value = ''; }}/></label>}
+            {canEdit && <label className="literature-replace"><span>页面通过替换文件更新正文，历史版本会保留</span><input type="file" disabled={busy} onChange={event => { void replaceFile(event.target.files?.[0]); event.currentTarget.value = ''; }}/></label>}
             <div className="literature-version-list">{detail.versions.map((version: Row) => <div className={`literature-version ${version.id === detail.current_version_id ? 'current' : ''}`} key={version.id}>
               <div className="literature-file-icon"><FileText size={15}/></div><div className="literature-file-info"><b>{version.original_name}</b><small>V{version.version_no} · {version.extension.toUpperCase().replace('.', '')} · {fmtSize(version.size_bytes)} · {fmtDate(version.created_at)}{version.id === detail.current_version_id ? ' · 当前版本' : ''}</small>{version.change_note && <small>{version.change_note}</small>}</div>
               <a className="button button-quiet" href={`/api/literature/${encodeURIComponent(detail.id)}/versions/${encodeURIComponent(version.id)}/download`}><Download size={13}/>下载</a>
@@ -360,8 +355,8 @@ export default function LiteratureLibrary({ notify, onAskAssistant, initialItemI
 
     {uploadOpen && <Modal title={selectedFiles.length ? '上传文献' : '添加书目'} onClose={() => { if (!busy) { setUploadOpen(false); setSelectedFiles([]); setBatchResults([]); setUploadError(''); } }}>
       <form className="literature-form" onSubmit={uploadLiterature}>
-        <p className="literature-form-help">支持 PDF、DOCX、TXT、Markdown。每份最多 25 MB，每批最多 8 份/100 MB。自动识别只作为候选书目信息，作者、年份和 DOI 由你确认。</p>
-        <label className="literature-file-picker"><Upload size={16}/><span>{selectedFiles.length ? `已选 ${selectedFiles.length} 份` : '选择一份或多份文献'}</span><input type="file" accept=".pdf,.docx,.txt,.md" multiple onChange={chooseUploadFiles}/></label>
+        <p className="literature-form-help">可选择任意文件；PDF、DOCX、XLSX、CSV、TSV、TXT 和 Markdown 可提取文本，其他格式保留原文件。扫描件中的文字需要 OCR。</p>
+        <label className="literature-file-picker"><Upload size={16}/><span>{selectedFiles.length ? `已选 ${selectedFiles.length} 份` : '选择一份或多份文献'}</span><input type="file" multiple onChange={chooseUploadFiles}/></label>
         {selectedFiles.length > 0 && <div className="literature-selected-files">{selectedFiles.map(selected => <div key={selected.key}><FileText size={13}/><span>{selected.file.name}</span><small>{fmtSize(selected.file.size)}</small></div>)}</div>}
         <div className="literature-form-grid"><label className="field-wide">标题或批次标题<input name="title" placeholder={selectedFiles.length > 1 ? '批次前缀；每篇会追加各自文件名' : '文献标题'}/></label>
           <label>作者（用分号分隔）<input name="authors" placeholder="作者 A; 作者 B"/></label><label>发表年份<input name="year" type="number" min="1000" max="3000" placeholder="2026"/></label>
