@@ -5,7 +5,7 @@ import {
 } from '@earendil-works/pi-ai';
 import { openaiProvider } from '@earendil-works/pi-ai/providers/openai';
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy';
-import type { AiConfig } from './config.ts';
+import { getAiApiKey, type AiConfig } from './config.ts';
 import { classifyAiTaskError } from './errors.ts';
 import { AiTokenBudgetError, AiTokenUsageUnknownError, type AiTokenUsage } from './usage.ts';
 
@@ -27,8 +27,8 @@ export type AgentRunOptions = {
 };
 
 function configuredModel(config: AiConfig) {
-  const key = String(process.env.IVD_AI_API_KEY || '').trim();
-  if (!key) throw new Error('模型凭据尚未通过服务端环境变量 IVD_AI_API_KEY 配置');
+  const key = getAiApiKey();
+  if (!key) throw new Error('请先在模型设置中配置 API Key');
   if (!config.model) throw new Error('请先配置模型 ID');
   const authContext: AuthContext = {
     env: async name => name === 'OPENAI_API_KEY' ? key : undefined,
@@ -147,7 +147,7 @@ export async function runPiAgent(options: AgentRunOptions, testRuntime?: PiRunti
 }
 
 export function piRuntimeConfigured(config: AiConfig) {
-  const hasKey = Boolean(String(process.env.IVD_AI_API_KEY || '').trim());
+  const hasKey = Boolean(getAiApiKey());
   if (!hasKey || !config.model) return false;
   if (config.provider === 'openai-compatible' && !config.baseUrl) return false;
   if (config.provider === 'openai' && !openaiProvider().getModels().some(model => model.id === config.model)) return false;

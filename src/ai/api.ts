@@ -1,6 +1,6 @@
 import type { Express, NextFunction, Request, RequestHandler, Response } from 'express';
 import { db, id, transaction } from '../db.ts';
-import { getAiConfig, aiConfigStatus, saveAiConfig } from './config.ts';
+import { getAiConfig, aiConfigStatus, saveAiConfig, saveAiApiKey } from './config.ts';
 import { appendJobEvent, enqueueManualReportJob, currentReportManifest, type Row } from './jobs.ts';
 import { runPiAgent, piRuntimeConfigured } from './provider.ts';
 import { searchKnowledge, resolveObservationValue } from './knowledge.ts';
@@ -60,9 +60,6 @@ export function installAiRoutes(app: Express, requireAuth: RequestHandler, requi
 
   app.get('/api/ai/admin/config', requireAuth, requireAdmin, wrapped((_req, res) => res.json(aiConfigStatus(getAiConfig()))));
   app.patch('/api/ai/admin/config', requireAuth, requireAdmin, wrapped((req, res) => {
-    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'apiKey') || Object.prototype.hasOwnProperty.call(req.body || {}, 'secret')) {
-      return res.status(400).json({ error: '密钥只通过服务端 IVD_AI_API_KEY 环境变量配置' });
-    }
     const previous = getAiConfig();
     const input = req.body || {};
     const saved = saveAiConfig({
@@ -75,6 +72,7 @@ export function installAiRoutes(app: Express, requireAuth: RequestHandler, requi
       timeoutMs: input.timeoutMs === undefined ? previous.timeoutMs : Number(input.timeoutMs),
       maxToolCalls: input.maxToolCalls === undefined ? previous.maxToolCalls : Number(input.maxToolCalls),
     }, req.user!.id);
+    if (input.apiKey !== undefined && String(input.apiKey).trim()) saveAiApiKey(String(input.apiKey));
     res.json(aiConfigStatus(saved));
   }));
 

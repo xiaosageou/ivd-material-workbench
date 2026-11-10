@@ -44,6 +44,7 @@ export default function ResearchAssistant({ user, notify, onOpenReport, onOpenLi
   const [configOpen, setConfigOpen] = useState(false);
   const [config, setConfig] = useState<any>({ provider: 'openai-compatible', model: '', baseUrl: '', autoArchive: true, maxTokens: 8192,
     taskTokenBudget: 32768, timeoutMs: 90000, maxToolCalls: 8 });
+  const [apiKey, setApiKey] = useState('');
   const [configBusy, setConfigBusy] = useState(false);
   const [testing, setTesting] = useState(false);
   const [recipePurpose, setRecipePurpose] = useState('');
@@ -140,7 +141,8 @@ export default function ResearchAssistant({ user, notify, onOpenReport, onOpenLi
   const saveConfig = async (event: React.FormEvent) => {
     event.preventDefault(); setConfigBusy(true); setError('');
     try {
-      const saved = await api('/api/ai/admin/config', { method: 'PATCH', body: JSON.stringify(config) });
+      const saved = await api('/api/ai/admin/config', { method: 'PATCH', body: JSON.stringify({ ...config, ...(apiKey.trim() ? { apiKey } : {}) }) });
+      setApiKey('');
       setConfig({ provider: saved.provider, model: saved.model, baseUrl: saved.baseUrl, autoArchive: saved.autoArchive,
         maxTokens: saved.maxTokens, taskTokenBudget: saved.taskTokenBudget, timeoutMs: saved.timeoutMs, maxToolCalls: saved.maxToolCalls });
       notify('研发助手设置已保存'); await refresh();
@@ -204,8 +206,8 @@ export default function ResearchAssistant({ user, notify, onOpenReport, onOpenLi
       {user.role === 'ADMIN' && <button className="button button-quiet" onClick={() => setConfigOpen(value => !value)}><Settings2 size={15}/>模型设置</button>}</section>
 
     {user.role === 'ADMIN' && configOpen && <form className="panel ai-config-panel" onSubmit={saveConfig}>
-      <div className="panel-heading"><div><div className="section-kicker">MODEL SERVICE</div><h2>模型与归档设置</h2><p>密钥只在服务端环境变量 IVD_AI_API_KEY 配置；页面仅显示配置状态。</p></div><span className={`badge ${status?.apiKeyConfigured ? 'badge-published' : 'badge-pending'}`}>{status?.apiKeyConfigured ? '服务端密钥已配置' : '服务端密钥待配置'}</span></div>
-      <div className="ai-config-grid"><label>服务类型<select value={config.provider} onChange={e => setConfig({ ...config, provider: e.target.value })}><option value="openai-compatible">OpenAI 兼容服务</option><option value="openai">Pi 官方 OpenAI 服务</option></select></label>
+      <div className="panel-heading"><div><div className="section-kicker">MODEL SERVICE</div><h2>模型与归档设置</h2><p>API Key 保存在本机服务端，保存后不会再次显示；留空可保留现有密钥。</p></div><span className={`badge ${status?.apiKeyConfigured ? 'badge-published' : 'badge-pending'}`}>{status?.apiKeyConfigured ? '密钥已配置' : '密钥待配置'}</span></div>
+      <div className="ai-config-grid"><label>API Key<input type="password" autoComplete="new-password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder={status?.apiKeyConfigured ? "已保存，留空不修改" : "输入 API Key"}/></label><label>服务类型<select value={config.provider} onChange={e => setConfig({ ...config, provider: e.target.value })}><option value="openai-compatible">OpenAI 兼容服务</option><option value="openai">Pi 官方 OpenAI 服务</option></select></label>
         <label>模型 ID<input value={config.model} onChange={e => setConfig({ ...config, model: e.target.value })} required maxLength={200} placeholder="填写部署方提供的模型 ID"/></label>
         {config.provider === 'openai-compatible' && <label className="ai-url-field">兼容服务地址<input type="url" value={config.baseUrl} onChange={e => setConfig({ ...config, baseUrl: e.target.value })} placeholder="https://model.example/v1" required/></label>}
         <label>单次模型输出上限（token）<input type="number" min="1024" max="32768" value={config.maxTokens} onChange={e => setConfig({ ...config, maxTokens: Number(e.target.value) })}/></label>

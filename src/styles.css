@@ -37,7 +37,7 @@ body{font-size:15px!important;color:#25332d!important}
 .research-ai-page .knowledge-card h3,.research-ai-page .knowledge-card-head h3{color:#25372e!important}
 .research-ai-page .knowledge-value{font-size:13px!important;color:#26352e!important}
 .research-ai-page .knowledge-index-notice{color:#35473d!important}
-.page-wrap :is(p,small,span,button,label,td,th,a,code){font-size:max(12px,1em)!important;color:#28382f}
+.page-wrap :is(p,small,span,button,label,td,th,a,code){font-size:max(12px,1em)!important}
 .page-wrap :is(.section-kicker,.eyebrow,.nav-caption){font-size:11px!important;color:#40574a!important}
-.modal-card :is(p,small,span,button,label,td,th,a,code){font-size:max(12px,1em)!important;color:#28382f}
+.modal-card :is(p,small,span,button,label,td,th,a,code){font-size:max(12px,1em)!important}
 .modal-card :is(.section-kicker,.editor-section-title,.ingredient-edit-top,.steps-editor>div>span){font-size:12px!important;color:#40564a!important}

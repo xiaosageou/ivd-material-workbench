@@ -1,5 +1,24 @@
 import { db, id } from '../db.ts';
+import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { openaiProvider } from '@earendil-works/pi-ai/providers/openai';
+
+const secretDir = path.resolve(process.env.DATA_DIR || 'data');
+const secretPath = path.join(secretDir, 'ai-api-key');
+export function getAiApiKey() {
+  try { const key = readFileSync(secretPath, 'utf8').trim(); if (key) return key; }
+  catch (error: any) { if (error.code !== 'ENOENT') throw error; }
+  return String(process.env.IVD_AI_API_KEY || '').trim();
+}
+export function saveAiApiKey(key: string) {
+  const value = key.trim();
+  if (!value || value.length > 4096 || /[\r\n]/.test(value)) throw new Error('请输入有效的 API Key');
+  mkdirSync(secretDir, { recursive: true });
+  const temp = path.join(secretDir, `.ai-key-${randomUUID()}`);
+  writeFileSync(temp, value, { mode: 0o600, flag: 'wx' });
+  renameSync(temp, secretPath);
+}
 
 export type AiProvider = 'openai' | 'openai-compatible';
 export type AiConfig = {
@@ -67,21 +86,21 @@ export function saveAiConfig(config: AiConfig, actorId: string) {
     ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,updated_by=excluded.updated_by,updated_at=datetime('now')`)
     .run(JSON.stringify(normalized), actorId || null);
   db.prepare(`INSERT INTO audit_events(id,actor_id,action,object_type,object_id,details) VALUES (?,?,?,?,?,?)`)
-    .run(id('aud_'), actorId || null, 'ai.config.update', 'ai_config', '', JSON.stringify({ ...normalized, hasSecret: Boolean(process.env.IVD_AI_API_KEY) }));
+    .run(id('aud_'), actorId || null, 'ai.config.update', 'ai_config', '', JSON.stringify({ ...normalized, hasSecret: Boolean(getAiApiKey()) }));
   return normalized;
 }
 
 export function aiConfigStatus(config = getAiConfig()) {
-  const hasApiKey = Boolean(String(process.env.IVD_AI_API_KEY || '').trim());
+  const hasApiKey = Boolean(getAiApiKey());
   const missing: string[] = [];
   if (!config.model) missing.push('model');
-  if (!hasApiKey) missing.push('IVD_AI_API_KEY');
+  if (!hasApiKey) missing.push('API Key');
   if (config.provider === 'openai-compatible' && !config.baseUrl) missing.push('baseUrl');
   if (config.provider === 'openai' && config.model && !openaiProvider().getModels().some(model => model.id === config.model)) missing.push('official_model_id');
   return {
     provider: config.provider, model: config.model, baseUrl: config.baseUrl, autoArchive: config.autoArchive,
     maxTokens: config.maxTokens, taskTokenBudget: config.taskTokenBudget, timeoutMs: config.timeoutMs, maxToolCalls: config.maxToolCalls,
     apiKeyConfigured: hasApiKey, status: missing.length ? 'waiting_configuration' : 'configured', missing,
-    keySource: '仅服务端环境变量 IVD_AI_API_KEY；不接受数据库、浏览器或个人 Pi/Codex 登录态。',
+    keySource: '服务端本地文件优先，未设置时使用 IVD_AI_API_KEY 环境变量。',
   };
 }

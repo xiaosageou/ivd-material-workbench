@@ -236,7 +236,7 @@ async function processReportAnalysis(job: Row, runAgent: typeof runPiAgent) {
   const chunks = (await import('./analysis.ts')).loadCurrentChunks(reportId, manifest);
   const config = aiConfigStatus(getAiConfig());
   if (config.status !== 'configured') {
-    markState(job, 'waiting_configuration', '文件解析已完成，等待管理员配置 Pi 模型与 IVD_AI_API_KEY',
+    markState(job, 'waiting_configuration', '文件解析已完成，等待管理员配置模型与 API Key',
       { parsedChunks: chunks.length, parserFailures: failures, missing: config.missing });
     return;
   }

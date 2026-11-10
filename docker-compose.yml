@@ -1,6 +1,6 @@
 services:
   ivd-workbench:
-    build: .
+    image: ${IVD_IMAGE:-ghcr.io/xiaosageou/ivd-material-workbench:latest}
     restart: unless-stopped
     ports:
       - "${PORT:-3001}:3001"
@@ -8,6 +8,7 @@ services:
       NODE_ENV: production
       PORT: 3001
       DATA_DIR: /app/data
+      IVD_AI_API_KEY: ${IVD_AI_API_KEY:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       IVD_EMBEDDING_API_KEY: ${IVD_EMBEDDING_API_KEY:-}
       QDRANT_URL: http://qdrant:6333
@@ -21,7 +22,7 @@ services:
       retries: 3
 
   ivd-ai-worker:
-    build: .
+    image: ${IVD_IMAGE:-ghcr.io/xiaosageou/ivd-material-workbench:latest}
     command: ["node", "--experimental-strip-types", "src/ai-worker.ts"]
     restart: unless-stopped
     environment:
@@ -51,7 +52,7 @@ services:
       - qdrant-data:/qdrant/storage
 
   ivd-literature-worker:
-    build: .
+    image: ${IVD_IMAGE:-ghcr.io/xiaosageou/ivd-material-workbench:latest}
     command: ["node", "--experimental-strip-types", "src/literature-worker.ts"]
     restart: unless-stopped
     environment:
@@ -78,7 +79,7 @@ services:
       start_period: 20s
 
   ivd-report-knowledge-worker:
-    build: .
+    image: ${IVD_IMAGE:-ghcr.io/xiaosageou/ivd-material-workbench:latest}
     command: ["node", "--experimental-strip-types", "src/report-knowledge-worker.ts"]
     restart: unless-stopped
     environment:

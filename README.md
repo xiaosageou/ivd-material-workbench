@@ -37,10 +37,11 @@
 
 ## Docker Compose
 
-复制 `.env.example` 为 `.env`，按需设置端口和 Cookie。Compose 会启动 Web/API、AI Worker、文献 Worker、研发报告知识 Worker 与 Qdrant；应用和三个 Worker 挂载同一个 `ivd-data` 卷，Qdrant 使用独立的 `qdrant-data` 卷。直接 HTTP 部署（例如受控内网）使用 `COOKIE_SECURE=false`：
+复制 `.env.example` 为 `.env`，按需设置端口和 Cookie。Compose 会启动 Web/API、AI Worker、文献 Worker、研发报告知识 Worker 与 Qdrant；应用和三个 Worker 挂载同一个 `ivd-data` 卷，Qdrant 使用独立的 `qdrant-data` 卷。镜像由 GitHub Actions 发布到 `ghcr.io/xiaosageou/ivd-material-workbench`。私有镜像需要先使用有 `read:packages` 权限的 GitHub 凭据执行 `docker login ghcr.io`；可通过 `IVD_IMAGE` 指定其他镜像或固定版本。直接 HTTP 部署（例如受控内网）使用 `COOKIE_SECURE=false`：
 
 ```powershell
-docker compose up --build -d
+docker compose pull
+docker compose up -d
 $env:ADMIN_NAME = '研发管理员'
 $env:ADMIN_EMAIL = 'admin@organization.example'
 $env:ADMIN_PASSWORD = '替换为至少12位的组织密码'
@@ -51,10 +52,10 @@ Remove-Item Env:ADMIN_NAME,Env:ADMIN_EMAIL,Env:ADMIN_PASSWORD
 生产模式默认给会话 Cookie 加 `Secure`。直接 HTTP 访问必须显式设置 `COOKIE_SECURE=false`；使用 HTTPS 时设为 `true`。启用 Caddy 配置前，在 `.env` 中填写 DNS 已指向此服务器的 `DOMAIN` 并设置 `COOKIE_SECURE=true`，随后运行：
 
 ```powershell
-docker compose --profile https up --build -d
+docker compose --profile https up -d
 ```
 
-Caddy 监听 80/443 并将 HTTPS 请求转发给应用。DNS 和防火墙需允许证书签发与续期流量进入 80/443。真实聊天模型由部署管理员通过 `IVD_AI_API_KEY` 提供服务端密钥，并在管理员“模型设置”中配置 provider、模型 ID 和服务地址。文献与研发报告知识索引共用 `IVD_EMBEDDING_API_KEY`；模型地址、名称、维度和预算在“文献向量化”中配置。报告知识与文献分别写入独立 Qdrant 集合，启用在线向量化会将页面所示资料内容发送至配置的 Embedding endpoint。Qdrant 使用内部地址 `http://qdrant:6333`，可通过 `QDRANT_API_KEY` 启用 API 密钥。密钥只从服务端环境变量读取，不写入 SQLite 或浏览器。当前开发环境没有 Docker；Compose 容器、共享卷、容器网络与 Caddy 证书签发仍需在部署主机验收。
+Caddy 监听 80/443 并将 HTTPS 请求转发给应用。DNS 和防火墙需允许证书签发与续期流量进入 80/443。真实聊天模型由管理员在“模型设置”中配置 API Key、provider、模型 ID 和服务地址；密钥保存在服务端数据目录 `ai-api-key` 文件中，也可通过 `IVD_AI_API_KEY` 环境变量提供，页面保存的密钥优先。文献与研发报告知识索引共用 `IVD_EMBEDDING_API_KEY`；模型地址、名称、维度和预算在“文献向量化”中配置。报告知识与文献分别写入独立 Qdrant 集合，启用在线向量化会将页面所示资料内容发送至配置的 Embedding endpoint。Qdrant 使用内部地址 `http://qdrant:6333`，可通过 `QDRANT_API_KEY` 启用 API 密钥。聊天模型密钥不写入 SQLite 或浏览器；本地文件为明文，请限制数据目录访问权限。向量化密钥通过服务端环境变量提供。当前开发环境没有 Docker；Compose 容器、共享卷、容器网络与 Caddy 证书签发仍需在部署主机验收。
 
 ## 库存、单位与配方规则
 

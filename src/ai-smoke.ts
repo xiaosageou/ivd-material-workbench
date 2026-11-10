@@ -141,8 +141,19 @@ try {
   equal(disabledSemanticSearch.data.mode, 'keyword', '报告知识外发关闭时页面检索保持本地关键词模式');
   assert(String(disabledSemanticSearch.data.fallbackReason).includes('尚未由管理员启用'), '关闭状态向页面明确说明未发起语义检索');
 
-  const rejectedSecret = await call('/api/ai/admin/config', { apiKey: 'must-not-persist' }, 'PATCH');
-  equal(rejectedSecret.status, 400, '密钥不能通过 API 写入数据库');
+  const secretValue = 'synthetic-local-key';
+  equal((await call('/api/ai/admin/config', { apiKey: secretValue }, 'PATCH', memberCookie)).status, 403, '普通成员不能设置密钥');
+  const savedSecret = await call('/api/ai/admin/config', { apiKey: secretValue }, 'PATCH');
+  equal(savedSecret.status, 200, '管理员可保存本地密钥');
+  equal(savedSecret.data.apiKeyConfigured, true, '显示密钥配置状态');
+  assert(!JSON.stringify(savedSecret.data).includes(secretValue), '响应不返回密钥');
+  assert(!JSON.stringify((await call('/api/ai/admin/config')).data).includes(secretValue), '读取配置不返回密钥');
+  const secretDb = new DatabaseSync(path.join(dataDir, 'ivd.sqlite'), { readOnly: true });
+  assert(!JSON.stringify(secretDb.prepare('SELECT * FROM system_settings').all()).includes(secretValue), '设置表不保存密钥');
+  assert(!JSON.stringify(secretDb.prepare('SELECT * FROM audit_events').all()).includes(secretValue), '审计记录不保存密钥');
+  secretDb.close();
+  rmSync(path.join(dataDir, 'ai-api-key'));
+
   const noModelCall = await call('/api/ai/admin/test-connection', {}, 'POST');
   equal(noModelCall.status, 409, '缺少模型凭据时连接检测不发起模型调用');
 
