@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { db, id, transaction } from '../db.ts';
 import { enqueueLiteratureIndex, safeLiteraturePath } from './repository.ts';
 import { LITERATURE_PARSER_VERSION, parseLiteratureFile } from './parser.ts';
-import { getLiteratureEmbeddingConfig, getLiteratureEmbeddingStatus, getActiveLiteratureProfile } from './embedding-config.ts';
+import { getEmbeddingApiKey, getLiteratureEmbeddingConfig, getLiteratureEmbeddingStatus, getActiveLiteratureProfile } from './embedding-config.ts';
 import { embedOpenAiCompatible, EmbeddingRequestError } from './embedding-provider.ts';
 import { deterministicPointId, deleteLiteratureGeneration, ensureLiteratureCollection, upsertLiteraturePoints } from './vector.ts';
 
@@ -382,7 +382,7 @@ async function processIndexJob(job: Row) {
       if (cached) { vectors[index] = cached; cachedCount++; } else missing.push(index);
     }
   } catch (error) { finishIndexJob(job, 'failed', (error as Error).message, 'embedding_cache_corrupt'); return; }
-  if (missing.length && !String(process.env.IVD_EMBEDDING_API_KEY || '').trim()) {
+  if (missing.length && !getEmbeddingApiKey()) {
     deferIndexJobForMissingEmbeddingKey(job);
     return;
   }

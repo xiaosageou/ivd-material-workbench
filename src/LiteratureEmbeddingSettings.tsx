@@ -14,6 +14,7 @@ async function request(path: string, init: RequestInit = {}) {
 export default function LiteratureEmbeddingSettings({ notify }: Props) {
   const [status, setStatus] = useState<any>(null);
   const [values, setValues] = useState<any>({});
+  const [apiKey, setApiKey] = useState('');
   const [health, setHealth] = useState<any>(null);
   const [connection, setConnection] = useState<any>(null);
   const [busy, setBusy] = useState(false);
@@ -28,8 +29,8 @@ export default function LiteratureEmbeddingSettings({ notify }: Props) {
   const update = (key: string, value: unknown) => setValues((current: any) => ({ ...current, [key]: value }));
   const save = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setBusy(true); setError(''); setConnection(null);
-    try { const result = await request('/api/admin/literature/embedding-config', { method: 'PATCH', body: JSON.stringify(values) });
-      setStatus(result); setValues(result.config || {}); notify('向量检索配置已保存'); await load(); }
+    try { const result = await request('/api/admin/literature/embedding-config', { method: 'PATCH', body: JSON.stringify({ ...values, ...(apiKey.trim() ? { apiKey } : {}) }) });
+      setApiKey(''); setStatus(result); setValues(result.config || {}); notify('向量检索配置已保存'); await load(); }
     catch (reason: any) { setError(reason.message); } finally { setBusy(false); }
   };
   const test = async () => {
@@ -44,14 +45,15 @@ export default function LiteratureEmbeddingSettings({ notify }: Props) {
   };
   if (!status) return <section className="panel"><div className="section-kicker">EMBEDDING & VECTOR SEARCH</div><h2>文献与研发报告向量化</h2>{error || '正在读取服务状态…'}</section>;
   return <section className="panel literature-embedding-settings">
-    <div className="panel-heading"><div><div className="section-kicker">EMBEDDING & VECTOR SEARCH</div><h2>文献与研发报告向量化</h2><p>此配置供文献 Worker 与研发报告知识 Worker 共用；两类内容写入不同 Qdrant 集合。API 密钥只从服务端环境变量读取，本页面只显示配置状态。</p></div><Sparkles size={18}/></div>
-    <div className="literature-service-status"><div><span className={`literature-status ${status.embedding?.keyConfigured ? 'status-completed' : 'status-waiting_configuration'}`}>{status.embedding?.keyConfigured ? 'Embedding 密钥已配置' : '等待 Embedding 密钥'}</span><small>IVD_EMBEDDING_API_KEY · {status.embedding?.keySource}</small></div>
+    <div className="panel-heading"><div><div className="section-kicker">EMBEDDING & VECTOR SEARCH</div><h2>文献与研发报告向量化</h2><p>此配置供文献 Worker 与研发报告知识 Worker 共用；两类内容写入不同 Qdrant 集合。API Key 保存在服务端本地，保存后不再显示；留空保留现有密钥。</p></div><Sparkles size={18}/></div>
+    <div className="literature-service-status"><div><span className={`literature-status ${status.embedding?.keyConfigured ? 'status-completed' : 'status-waiting_configuration'}`}>{status.embedding?.keyConfigured ? 'Embedding 密钥已配置' : '等待 Embedding 密钥'}</span><small>{status.embedding?.keySource}</small></div>
       <div><span className={`literature-status ${health?.health?.status === 'connected' ? 'status-completed' : 'status-waiting_configuration'}`}>{health?.health?.status === 'connected' ? 'Qdrant 可连接' : 'Qdrant 未连接'}</span><small>{health?.configured?.url || 'QDRANT_URL 尚未设置'} · 服务密钥 {health?.configured?.keyConfigured ? '已配置' : '未配置'}</small></div>
       <button type="button" className="button button-quiet" onClick={refreshVector} disabled={busy}><Activity size={14}/>检测 Qdrant</button>
     </div>
     {status.profile && <div className="literature-profile-note"><Check size={14}/>当前 profile：{status.profile.model} · {status.profile.dimensions} 维 · {status.profile.distance} · {status.profile.fingerprint.slice(0, 12)}</div>}
     <form className="literature-form" onSubmit={save}>
       <div className="literature-form-grid">
+        <label>Embedding API Key<input type="password" autoComplete="new-password" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder={status.embedding?.keyConfigured ? "已保存，留空不修改" : "输入 API Key"}/></label>
         <label className="field-wide">OpenAI-compatible API base URL<input value={values.baseUrl || ''} onChange={event => update('baseUrl', event.target.value)} placeholder="https://embedding.example/v1"/><small>仅 HTTPS；本机契约测试可使用回环地址 HTTP。</small></label>
         <label>模型 ID<input value={values.model || ''} onChange={event => update('model', event.target.value)} placeholder="部署方提供的 embedding 模型名"/></label>
         <label>期望维度<input type="number" min="1" max="65536" step="1" value={values.dimensions || ''} onChange={event => update('dimensions', Number(event.target.value))} placeholder="由服务商说明"/></label>

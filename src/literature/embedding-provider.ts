@@ -1,4 +1,4 @@
-import type { LiteratureEmbeddingConfig } from './embedding-config.ts';
+import { getEmbeddingApiKey, type LiteratureEmbeddingConfig } from './embedding-config.ts';
 
 export type EmbeddingUsage = { status: 'known' | 'unknown'; promptTokens: number | null; totalTokens: number | null; responseId: string };
 export type EmbeddingResult = { vectors: number[][]; usage: EmbeddingUsage; model: string };
@@ -20,7 +20,7 @@ export async function embedOpenAiCompatible(inputs: string[], profile: Pick<Lite
   if (inputs.some(text => typeof text !== 'string' || !text.trim() || text.length > profile.maxInputChars || Buffer.byteLength(text, 'utf8') > profile.maxInputChars)) {
     throw new EmbeddingRequestError('Embedding 输入为空或超过配置的字符/UTF-8 字节上限', 'input_size_limit', false, 'rejected');
   }
-  const key = String(options.apiKey ?? process.env.IVD_EMBEDDING_API_KEY ?? '').trim();
+  const key = String(options.apiKey ?? getEmbeddingApiKey()).trim();
   if (!profile.baseUrl || !profile.model || !profile.dimensions || !key) throw new EmbeddingRequestError('Embedding 服务或服务端密钥尚未配置', 'waiting_configuration', false, 'rejected');
   const endpoint = `${profile.baseUrl.replace(/\/+$/, '')}/embeddings`;
   const timeout = AbortSignal.timeout(profile.timeoutMs);

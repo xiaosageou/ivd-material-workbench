@@ -81,6 +81,19 @@ try {
   memberCookie = await login('literature-author@example.test', 'literature-member-password-long');
   otherCookie = await login('literature-reader@example.test', 'literature-member-password-long');
 
+  const secret = 'synthetic-embedding-secret';
+  equal((await call('/api/admin/literature/embedding-config', { apiKey: secret }, 'PATCH', memberCookie)).status, 403, '成员不可配置密钥');
+  const savedKey = await call('/api/admin/literature/embedding-config', { apiKey: secret }, 'PATCH');
+  equal(savedKey.status, 200, '管理员可保存向量密钥');
+  equal(savedKey.data.embedding.keyConfigured, true, '显示密钥配置状态');
+  assert(!JSON.stringify(savedKey.data).includes(secret), '响应不包含密钥');
+  equal(readFileSync(path.join(dataDir, 'embedding-api-key'), 'utf8'), secret, '密钥保存在共享数据目录');
+  const keyDb = new DatabaseSync(path.join(dataDir, 'ivd.sqlite'), { readOnly: true });
+  assert(!JSON.stringify(keyDb.prepare('SELECT * FROM system_settings').all()).includes(secret), '设置表不保存密钥');
+  assert(!JSON.stringify(keyDb.prepare('SELECT * FROM audit_events').all()).includes(secret), '审计记录不保存密钥');
+  keyDb.close();
+  rmSync(path.join(dataDir, 'embedding-api-key'));
+
   const collection = await call('/api/literature/collections', { name: '蛋白定量', description: '合成测试集合' }, 'POST');
   equal(collection.status, 201, '管理员创建文献集合');
   const collectionId = collection.data.id;

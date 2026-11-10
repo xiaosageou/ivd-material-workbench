@@ -1,6 +1,23 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
+import path from 'node:path';
 import { db, id, transaction } from '../db.ts';
 import { LITERATURE_CHUNKER_VERSION, LITERATURE_PARSER_VERSION } from './parser.ts';
+
+const secretDir = path.resolve(process.env.DATA_DIR || 'data');
+const secretPath = path.join(secretDir, 'embedding-api-key');
+export function getEmbeddingApiKey() {
+  try { const value = readFileSync(secretPath, 'utf8').trim(); if (value) return value; }
+  catch (error: any) { if (error.code !== 'ENOENT') throw error; }
+  return String(process.env.IVD_EMBEDDING_API_KEY || '').trim();
+}
+function saveEmbeddingApiKey(value: unknown) {
+  if (typeof value !== 'string' || !value.trim() || value.trim().length > 4096 || /[\r\n]/.test(value)) throw new Error('请输入有效的 Embedding API Key');
+  mkdirSync(secretDir, { recursive: true });
+  const temp = path.join(secretDir, `.embedding-key-${randomUUID()}`);
+  writeFileSync(temp, value.trim(), { mode: 0o600, flag: 'wx' });
+  renameSync(temp, secretPath);
+}
 
 export type LiteratureEmbeddingConfig = {
   baseUrl: string; model: string; dimensions: number; distance: 'Cosine' | 'Dot' | 'Euclid' | 'Manhattan';
@@ -67,9 +84,8 @@ function activeProfile(config: LiteratureEmbeddingConfig) {
   return db.prepare('SELECT * FROM literature_embedding_profiles WHERE fingerprint=?').get(fingerprint) as Row | undefined;
 }
 
-export function saveLiteratureEmbeddingConfig(actorId: string, input: Partial<LiteratureEmbeddingConfig>) {
-  if (Object.prototype.hasOwnProperty.call(input, 'apiKey') || Object.prototype.hasOwnProperty.call(input, 'secret')
-    || Object.prototype.hasOwnProperty.call(input, 'qdrantApiKey')) throw new Error('Embedding 和 Qdrant 密钥只通过服务端环境变量配置');
+export function saveLiteratureEmbeddingConfig(actorId: string, input: Partial<LiteratureEmbeddingConfig> & { apiKey?: string }) {
+  if (Object.prototype.hasOwnProperty.call(input, 'secret') || Object.prototype.hasOwnProperty.call(input, 'qdrantApiKey')) throw new Error('Qdrant 密钥通过服务端环境变量配置');
   const previous = getLiteratureEmbeddingConfig();
   const config: LiteratureEmbeddingConfig = {
     baseUrl: input.baseUrl === undefined ? previous.baseUrl : safeEndpoint(input.baseUrl),
@@ -93,6 +109,7 @@ export function saveLiteratureEmbeddingConfig(actorId: string, input: Partial<Li
   if ((config.baseUrl || config.model || config.dimensions) && (!config.baseUrl || !config.model || !config.dimensions)) {
     throw new Error('启用 Embedding 前请填写服务地址、模型名和期望维度；留空三项可停用在线向量化。');
   }
+  if (input.apiKey !== undefined && input.apiKey.trim()) saveEmbeddingApiKey(input.apiKey);
   const fingerprint = literatureProfileFingerprint(config);
   const previousProfile = getActiveLiteratureProfile();
   const profileChanged = (previousProfile?.fingerprint || '') !== (config.baseUrl && config.model && config.dimensions ? fingerprint : '');
@@ -126,7 +143,7 @@ export function saveLiteratureEmbeddingConfig(actorId: string, input: Partial<Li
     }
     db.prepare(`INSERT INTO audit_events(id,actor_id,action,object_type,object_id,details) VALUES (?,?,?,?,?,?)`)
       .run(id('aud_'), actorId, 'literature.embedding.config', 'literature_embedding_config', '', JSON.stringify({ fingerprint, model: config.model,
-        dimensions: config.dimensions, autoIndex: config.autoIndex, hasKey: Boolean(process.env.IVD_EMBEDDING_API_KEY), hasQdrantKey: Boolean(process.env.QDRANT_API_KEY) }));
+        dimensions: config.dimensions, autoIndex: config.autoIndex, hasKey: Boolean(getEmbeddingApiKey()), hasQdrantKey: Boolean(process.env.QDRANT_API_KEY) }));
   });
   return getLiteratureEmbeddingStatus();
 }
@@ -134,7 +151,7 @@ export function saveLiteratureEmbeddingConfig(actorId: string, input: Partial<Li
 export function getLiteratureEmbeddingStatus() {
   const config = getLiteratureEmbeddingConfig();
   const profile = activeProfile(config);
-  const keyConfigured = Boolean(String(process.env.IVD_EMBEDDING_API_KEY || '').trim());
+  const keyConfigured = Boolean(getEmbeddingApiKey());
   const qdrantUrl = String(process.env.QDRANT_URL || '').trim();
   const qdrantKeyConfigured = Boolean(String(process.env.QDRANT_API_KEY || '').trim());
   const missing = [] as string[];
@@ -148,7 +165,7 @@ export function getLiteratureEmbeddingStatus() {
       distance: profile.distance, generation: profile.generation, active: Boolean(profile.active) } : null,
     embedding: { configured: Boolean(config.baseUrl && config.model && config.dimensions), keyConfigured,
       status: !config.baseUrl || !config.model || !config.dimensions || !keyConfigured ? 'waiting_configuration' : 'configured',
-      keySource: '仅服务端环境变量 IVD_EMBEDDING_API_KEY；不接受数据库或浏览器密钥。' },
+      keySource: '服务端本地文件优先，未设置时使用 IVD_EMBEDDING_API_KEY 环境变量。' },
     qdrant: { configured: Boolean(qdrantUrl), keyConfigured: qdrantKeyConfigured, url: qdrantUrl,
       status: qdrantUrl ? 'configured' : 'waiting_configuration', keySource: '仅服务端环境变量 QDRANT_API_KEY。' },
     autoIndex: config.autoIndex, missing,

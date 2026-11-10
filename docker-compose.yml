@@ -114,6 +114,7 @@ services:
       ivd-workbench:
         condition: service_healthy
 
+# 持久卷：数据库及页面保存的 API Key 存放于 ivd-data；向量数据存放于 qdrant-data。
 volumes:
   ivd-data:
   qdrant-data:

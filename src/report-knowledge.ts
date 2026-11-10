@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { db, id, transaction } from './db.ts';
 import { getCurrentKnowledgeObservationsByIds, searchKnowledge, type KnowledgeFilters } from './ai/knowledge.ts';
-import { getActiveLiteratureProfile, getLiteratureEmbeddingConfig, getLiteratureEmbeddingStatus } from './literature/embedding-config.ts';
+import { getActiveLiteratureProfile, getEmbeddingApiKey, getLiteratureEmbeddingConfig, getLiteratureEmbeddingStatus } from './literature/embedding-config.ts';
 import { beginLiteratureQueryUsage, settleLiteratureQueryUsage } from './literature/search.ts';
 import { embedOpenAiCompatible, EmbeddingRequestError } from './literature/embedding-provider.ts';
 import { deterministicPointId, ensureReportKnowledgeCollection, queryReportKnowledgePoints,
@@ -337,7 +337,7 @@ export async function processReportKnowledgeIndexOnce() {
     finishJob(job, 'partial', 'usage_unknown', '历史 Embedding 用量未确认，缺失向量未重发请求；请保持当前输入不变并先核查服务端用量。');
     return true;
   }
-  if (missing.length && !String(process.env.IVD_EMBEDDING_API_KEY || '').trim()) {
+  if (missing.length && !getEmbeddingApiKey()) {
     finishJob(job, 'waiting_configuration', 'waiting_embedding_key', '本地没有完整向量缓存；请配置服务端 Embedding 密钥后继续索引。'); return true;
   }
   for (let offset = 0; offset < missing.length; offset += Math.max(1, Math.min(64, config.batchSize))) {

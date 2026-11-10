@@ -55,7 +55,7 @@ Remove-Item Env:ADMIN_NAME,Env:ADMIN_EMAIL,Env:ADMIN_PASSWORD
 docker compose --profile https up -d
 ```
 
-Caddy 监听 80/443 并将 HTTPS 请求转发给应用。DNS 和防火墙需允许证书签发与续期流量进入 80/443。真实聊天模型由管理员在“模型设置”中配置 API Key、provider、模型 ID 和服务地址；密钥保存在服务端数据目录 `ai-api-key` 文件中，也可通过 `IVD_AI_API_KEY` 环境变量提供，页面保存的密钥优先。文献与研发报告知识索引共用 `IVD_EMBEDDING_API_KEY`；模型地址、名称、维度和预算在“文献向量化”中配置。报告知识与文献分别写入独立 Qdrant 集合，启用在线向量化会将页面所示资料内容发送至配置的 Embedding endpoint。Qdrant 使用内部地址 `http://qdrant:6333`，可通过 `QDRANT_API_KEY` 启用 API 密钥。聊天模型密钥不写入 SQLite 或浏览器；本地文件为明文，请限制数据目录访问权限。向量化密钥通过服务端环境变量提供。当前开发环境没有 Docker；Compose 容器、共享卷、容器网络与 Caddy 证书签发仍需在部署主机验收。
+Caddy 监听 80/443 并将 HTTPS 请求转发给应用。DNS 和防火墙需允许证书签发与续期流量进入 80/443。真实聊天模型由管理员在“模型设置”中配置 API Key、provider、模型 ID 和服务地址；密钥保存在服务端数据目录 `ai-api-key` 文件中，也可通过 `IVD_AI_API_KEY` 环境变量提供，页面保存的密钥优先。文献与研发报告知识索引共用向量化配置；管理员可在“文献向量化”中设置 API Key、地址、模型和维度。密钥存于数据目录的 `embedding-api-key` 文件，也可使用环境变量 `IVD_EMBEDDING_API_KEY`，本地文件优先。报告知识与文献分别写入独立 Qdrant 集合，启用在线向量化会将页面所示资料内容发送至配置的 Embedding endpoint。Qdrant 使用内部地址 `http://qdrant:6333`，可通过 `QDRANT_API_KEY` 启用 API 密钥。聊天模型密钥不写入 SQLite 或浏览器；本地文件为明文，请限制数据目录访问权限。向量化密钥同样为本地明文文件，请限制数据目录访问。当前开发环境没有 Docker；Compose 容器、共享卷、容器网络与 Caddy 证书签发仍需在部署主机验收。
 
 ## 库存、单位与配方规则
 
