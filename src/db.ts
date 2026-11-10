@@ -188,6 +188,24 @@ if (current < 15) {
   } catch (error) { db.exec('ROLLBACK'); throw error; }
 }
 
+if (current < 16) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const versions = db.prepare('SELECT id,original_name FROM literature_file_versions').all() as Array<{id: string; original_name: string}>;
+    const update = db.prepare('UPDATE literature_file_versions SET original_name=? WHERE id=?');
+    for (const version of versions) {
+      const name = version.original_name;
+      if (![...name].every(char => char.codePointAt(0)! <= 255) || !/[\u0080-\u00ff]/.test(name)) continue;
+      try {
+        const decoded = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.from(name, 'latin1'));
+        if (/[\u3400-\u9fff]/u.test(decoded) && !/[\u0000-\u001f\u007f]/.test(decoded)) update.run(decoded, version.id);
+      } catch { /* Not UTF-8 decoded as Latin-1: preserve the original. */ }
+    }
+    db.prepare('INSERT INTO schema_migrations(version) VALUES (?)').run(16);
+    db.exec('COMMIT'); current = 16;
+  } catch (error) { db.exec('ROLLBACK'); throw error; }
+}
+
 export function transaction<T>(work: () => T): T {
   db.exec('BEGIN IMMEDIATE');
   try {

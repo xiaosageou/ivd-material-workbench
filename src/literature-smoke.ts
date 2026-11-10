@@ -105,7 +105,7 @@ try {
       keywords: ['蛋白', '定量'], tags: ['方法学'], collectionIds: [collectionId] },
     { title: '单份格式错误的模拟PDF', year: 2023 },
   ]));
-  batch.append('files', txt('SYN-01-paper.txt', '第一段：人工合成文献正文，包含蛋白定量研究背景。\n第二段：重复测定条件由作者报告。'), 'SYN-01-paper.txt');
+  batch.append('files', txt('SYN-01-中文文献.txt', '第一段：人工合成文献正文，包含蛋白定量研究背景。\n第二段：重复测定条件由作者报告。'), 'SYN-01-中文文献.txt');
   batch.append('files', new Blob(['not a pdf'], { type: 'application/pdf' }), 'broken.pdf');
   const upload = await call('/api/literature', batch, 'POST', memberCookie);
   equal(upload.status, 207, '批次部分成功时保留逐文件结果');
@@ -115,6 +115,16 @@ try {
   const itemId = String(item.id);
   equal(item.can_edit, 1, '创建者获得编辑权限');
   equal(item.currentVersion.extension, '.txt', '全文版本正确识别 TXT 格式');
+  equal(item.currentVersion.original_name, 'SYN-01-中文文献.txt', '上传文件名按 UTF-8 正确保存');
+  const repairDb = new DatabaseSync(path.join(dataDir, 'ivd.sqlite'));
+  const garbledName = Buffer.from('SYN-01-中文文献.txt', 'utf8').toString('latin1');
+  repairDb.prepare('UPDATE literature_file_versions SET original_name=? WHERE id=?').run(garbledName, item.currentVersion.id);
+  repairDb.prepare('DELETE FROM schema_migrations WHERE version=16').run();
+  repairDb.close();
+  await run(['src/cli.ts'], env);
+  const repaired = await call(`/api/literature/${itemId}`, undefined, 'GET', memberCookie);
+  equal(repaired.data.currentVersion.original_name, 'SYN-01-中文文献.txt', '自动修复历史 UTF-8 乱码文件名');
+
   equal(item.currentVersion.sha256, createHash('sha256').update('第一段：人工合成文献正文，包含蛋白定量研究背景。\n第二段：重复测定条件由作者报告。').digest('hex'), '正文文件保存 SHA-256');
   assert(upload.data.results.find((row: any) => !row.ok).error.includes('与扩展名不匹配'), '损坏文献格式说明按文件返回');
 

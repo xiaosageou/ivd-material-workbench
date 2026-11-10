@@ -20,7 +20,7 @@ import { searchLiterature } from './search.ts';
 type Row = Record<string, any>;
 type AuthRequest = Request & { user?: LiteratureActor };
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), defParamCharset: 'utf8' });
 const batchUpload = upload.array('files');
 const versionUpload = upload.single('file');
 const route = (handler: (req: AuthRequest, res: Response) => unknown | Promise<unknown>) => (req: AuthRequest, res: Response, next: NextFunction) => {

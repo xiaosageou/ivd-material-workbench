@@ -1,4 +1,7 @@
 import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { parseResearchFile, type ParseResult } from '../ai/parsers.ts';
 
 export const LITERATURE_PARSER_VERSION = 'literature-parser-2';
@@ -124,12 +127,63 @@ export async function parsePdfDocument(document: any, shouldCancel: () => boolea
       ocr: { configured: false, used: false }, comments: '保留物理页码；PDF.js 提取文本层，不执行嵌入 JavaScript，不调用 OCR。无文本层的页面会明确列出，不能据此区分空白页与扫描页。' } };
 }
 
+async function runPdfTool(command: string, args: string[], shouldCancel: () => boolean, outputLimit: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, env: { ...process.env, LC_ALL: 'C' } });
+    const output: Buffer[] = [];
+    const errors: Buffer[] = [];
+    let outputBytes = 0;
+    let stopped: Error | undefined;
+    const timer = setInterval(() => {
+      try { if (shouldCancel()) { stopped = Object.assign(new Error('文献解析任务已取消'), { code: 'CANCELLED' }); child.kill(); } }
+      catch (error) { stopped = error as Error; child.kill(); }
+    }, 1000);
+    child.stdout.on('data', (chunk: Buffer) => {
+      outputBytes += chunk.length;
+      if (outputBytes > outputLimit) { stopped = new Error('PDF 提取文本超过处理容量'); child.kill(); return; }
+      output.push(chunk);
+    });
+    child.stderr.on('data', (chunk: Buffer) => { if (errors.reduce((n, b) => n + b.length, 0) < 4096) errors.push(chunk); });
+    child.stdin.on('error', () => {});
+    child.on('error', error => { clearInterval(timer); reject(error); });
+    child.on('close', code => {
+      clearInterval(timer);
+      if (stopped) return reject(stopped);
+      if (code !== 0) return reject(new Error(`PDF 文本提取失败：${Buffer.concat(errors).toString('utf8').slice(0, 500) || `退出码 ${code}`}`));
+      resolve(Buffer.concat(output).toString('utf8'));
+    });
+    child.stdin.end();
+  });
+}
+
 async function parsePdf(buffer: Buffer, shouldCancel: () => boolean): Promise<LiteratureParseResult> {
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs') as any;
-  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer), isEvalSupported: false, useSystemFonts: false,
-    stopAtErrors: false, disableFontFace: true, verbosity: 0 });
-  try { return await parsePdfDocument(await loadingTask.promise, shouldCancel); }
-  finally { await loadingTask.destroy().catch(() => undefined); }
+  const tempDir = mkdtempSync(path.join(tmpdir(), 'ivd-pdf-'));
+  const tempPdf = path.join(tempDir, 'input.pdf');
+  try {
+    writeFileSync(tempPdf, buffer, { mode: 0o600 });
+    const info = await runPdfTool(process.env.IVD_PDFINFO || 'pdfinfo', [tempPdf], shouldCancel, 1024 * 1024);
+    const pageCount = Number(/^Pages:\s*(\d+)/mi.exec(info)?.[1] || 0);
+    if (!pageCount) throw new Error('无法确定 PDF 页数');
+    const output = await runPdfTool(process.env.IVD_PDFTOTEXT || 'pdftotext',
+      ['-enc', 'UTF-8', '-layout', '-l', String(Math.min(pageCount, LITERATURE_MAX_PDF_PAGES)), tempPdf, '-'], shouldCancel, 32 * 1024 * 1024);
+    const pages = output.split('\f');
+    if (pages.at(-1) === '') pages.pop();
+    if (pages.length !== Math.min(pageCount, LITERATURE_MAX_PDF_PAGES)) throw new Error('PDF 提取页数与文档页数不一致');
+    const result = await parsePdfDocument({ numPages: pageCount, getPage: async (pageNumber: number) => ({
+      getTextContent: async () => ({ items: [{ str: pages[pageNumber - 1], hasEOL: true }] }), cleanup() {},
+    }) }, shouldCancel);
+    result.coverage.parser = 'poppler-pdftotext';
+    result.coverage.comments = '使用 Poppler 提取 PDF 文本层并保留物理页码；未使用 OCR。';
+    return result;
+  } catch (error: any) {
+    if (error?.code !== 'ENOENT') throw error;
+    // Local development without Poppler may still parse using the bundled PDF.js.
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs') as any;
+    const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer), isEvalSupported: false, useSystemFonts: false,
+      stopAtErrors: false, disableFontFace: true, verbosity: 0 });
+    try { const result = await parsePdfDocument(await loadingTask.promise, shouldCancel); result.coverage.parser = 'pdfjs-fallback'; return result; }
+    finally { await loadingTask.destroy().catch(() => undefined); }
+  } finally { rmSync(tempDir, { recursive: true, force: true }); }
 }
 
 export async function parseLiteratureFile(fileName: string, buffer: Buffer, shouldCancel: () => boolean = () => false): Promise<LiteratureParseResult> {
