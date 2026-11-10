@@ -26,7 +26,7 @@ try {
   process.env.DATA_DIR = dataDir;
   const upgraded = await import('./db.ts');
   const version = (upgraded.db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as any).version;
-  assert(version === 14, '增量迁移写入版本 14');
+  assert(version === 15, '增量迁移写入版本 15');
   const lot = upgraded.db.prepare(`SELECT b.quantity,m.name FROM stock_balances b JOIN materials m ON m.id='legacy-material' WHERE b.lot_id='legacy-lot'`).get() as any;
   assert(lot?.quantity === '2.5' && lot?.name === '历史物料', '旧物料与库存余额完整保留');
   const recipe = upgraded.db.prepare('SELECT scope,created_by FROM recipes WHERE id=?').get('legacy-recipe') as any;

@@ -118,9 +118,12 @@ try {
   equal(item.currentVersion.sha256, createHash('sha256').update('第一段：人工合成文献正文，包含蛋白定量研究背景。\n第二段：重复测定条件由作者报告。').digest('hex'), '正文文件保存 SHA-256');
   assert(upload.data.results.find((row: any) => !row.ok).error.includes('与扩展名不匹配'), '损坏文献格式说明按文件返回');
 
-  const list = await call('/api/literature?q=' + encodeURIComponent('蛋白定量'), undefined, 'GET', otherCookie);
+  const searchWithoutVector = await call('/api/literature?q=' + encodeURIComponent('蛋白定量'), undefined, 'GET', otherCookie);
+  equal(searchWithoutVector.data.rows.length, 0, '未配置向量服务时不回退本地全文检索');
+  assert(searchWithoutVector.data.search.fallbackReason.includes('未配置'), '展示向量服务缺失原因');
+  const list = await call('/api/literature', undefined, 'GET', otherCookie);
   equal(list.status, 200, '组织成员可共享检索文献');
-  assert(list.data.rows.some((row: any) => row.id === itemId), '中文书目关键词检索命中');
+  assert(list.data.rows.some((row: any) => row.id === itemId), '文献列表包含上传条目');
   assert(list.data.rows[0].can_edit === 0, '其他成员返回只读能力');
   const detail = await call(`/api/literature/${itemId}`, undefined, 'GET', otherCookie);
   equal(detail.status, 200, '非作者可查看文献详情');
@@ -185,6 +188,15 @@ try {
     }
   } finally { restoredDb.close(); }
 
+  const vectorOnlyDb = new DatabaseSync(path.join(dataDir, 'ivd.sqlite'), { readOnly: true });
+  equal(vectorOnlyDb.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='trigger' AND name='literature_chunks_fts_insert'").get()?.n, 0, '不再建立本地全文索引');
+  vectorOnlyDb.close();
+  const metadataOnly = await call('/api/literature', { title: '仅元数据向量排队验证' }, 'POST', memberCookie);
+  equal(metadataOnly.status, 201, '创建仅有元数据的文献');
+  const configured = await call('/api/admin/literature/embedding-config', { baseUrl:'https://embedding.example/v1', model:'synthetic-model', dimensions:3 }, 'PATCH');
+  equal(configured.status, 200, '配置向量服务');
+  const afterConfig = await call(`/api/literature/${metadataOnly.data.item.id}`, undefined, 'GET', memberCookie);
+  assert(afterConfig.data.jobs.some((job:any) => job.job_type === 'index' && job.status === 'waiting_configuration'), '已有文献在配置后自动加入向量队列并等待密钥');
   const largeBatch = new FormData();
   for (let i = 0; i < 9; i++) largeBatch.append('files', new Blob([i === 0 ? new Uint8Array(26 * 1024 * 1024) : new Uint8Array([i])]), `fixture-${i}.dat`);
   const largeResult = await call('/api/literature', largeBatch, 'POST', memberCookie);
@@ -194,7 +206,7 @@ try {
   const binaryDownload = await call(`/api/literature/${binaryItem.id}/versions/${binaryItem.currentVersion.id}/download`, undefined, 'GET', memberCookie);
   equal(binaryDownload.status, 200, '其他格式可下载');
   equal((binaryDownload.data as ArrayBuffer).byteLength, 26 * 1024 * 1024, '大文件下载完整');
-  console.log('LITERATURE SMOKE PASS: 隔离数据库迁移、批次逐份上传、书目/DOI候选、中文关键词检索、创建者/管理员权限、409修订冲突、全文版本与安全下载、软删除/恢复、集合与标签、备份恢复及全部文献文件SHA-256均通过。');
+  console.log('LITERATURE SMOKE PASS: 隔离数据库迁移、批次逐份上传、书目/DOI候选、向量服务缺失提示、创建者/管理员权限、409修订冲突、全文版本与安全下载、软删除/恢复、集合与标签、备份恢复及全部文献文件SHA-256均通过。');
 } finally {
   if (server) {
     server.kill('SIGTERM');

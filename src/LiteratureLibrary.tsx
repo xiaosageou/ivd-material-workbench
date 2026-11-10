@@ -29,7 +29,7 @@ export default function LiteratureLibrary({ notify, onAskAssistant, initialItemI
   const [trashRows, setTrashRows] = useState<Row[]>([]);
   const [stats, setStats] = useState({ total: 0, searchable: 0, processing: 0, failed: 0 });
   const [searchStatus, setSearchStatus] = useState<any>(null);
-  const [searchMode, setSearchMode] = useState<'hybrid'|'keyword'|'semantic'>('hybrid');
+  const searchMode = 'semantic';
   const [searchSummary, setSearchSummary] = useState<any>(null);
   const [collections, setCollections] = useState<Row[]>([]);
   const [selectedId, setSelectedId] = useState('');
@@ -275,7 +275,7 @@ export default function LiteratureLibrary({ notify, onAskAssistant, initialItemI
       <div><div className="section-kicker">LITERATURE ARCHIVE</div><h2>组织共享的文献知识库</h2><p>管理书目、全文版本与解析状态。文献和报告分开存放，原文件只会在你明确启用向量化后发送给所配置的 Embedding 服务。</p></div>
       <div className="literature-actions">
         <label className="searchbox"><Search size={15}/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索标题、作者、DOI、摘要或正文"/></label>
-        <select className="literature-search-mode" value={searchMode} onChange={event => setSearchMode(event.target.value as any)} aria-label="文献检索模式"><option value="hybrid">混合检索</option><option value="keyword">关键词</option><option value="semantic">语义检索</option></select>
+
         <button className="button button-quiet" onClick={() => setCollectionOpen(true)}><FolderOpen size={14}/>集合</button>
         <button className="button button-quiet" onClick={openUpload}><BookOpen size={14}/>添加书目</button>
         <button className="button button-primary" onClick={openUpload}><Upload size={14}/>上传文献</button>
@@ -283,7 +283,7 @@ export default function LiteratureLibrary({ notify, onAskAssistant, initialItemI
     </div>
 
     {searchSummary?.fallbackReason && query.trim() && <div className="literature-search-fallback"><Info size={14}/>{searchSummary.fallbackReason}</div>}
-    {searchStatus && <div className="literature-service-strip"><Sparkles size={14}/><span>{searchStatus.workerOnline ? '本地解析/索引 Worker 在线' : '本地解析/索引 Worker 离线'} · {searchStatus.embeddingReady && searchStatus.vectorConfigured ? `${searchStatus.profile?.model || 'Embedding'} 已配置；当前搜索模式：${searchSummary?.mode || '关键词'}` : 'Embedding 或 Qdrant 尚未完整配置，当前使用关键词搜索'}</span></div>}
+    {searchStatus && <div className="literature-service-strip"><Sparkles size={14}/><span>{searchStatus.workerOnline ? '本地解析/索引 Worker 在线' : '本地解析/索引 Worker 离线'} · {searchStatus.embeddingReady && searchStatus.vectorConfigured ? `${searchStatus.profile?.model || 'Embedding'} 已配置；当前搜索模式：${searchSummary?.mode || '向量检索'}` : 'Embedding 或 Qdrant 尚未完整配置，向量检索不可用'}</span></div>}
 
     <div className="literature-stats">
       <div className="literature-stat"><span>共享文献</span><b>{stats.total}</b><small>有效书目</small></div>
@@ -347,7 +347,7 @@ export default function LiteratureLibrary({ notify, onAskAssistant, initialItemI
             </>}
           </section>
           <section className="literature-section"><SectionHeading title="分类与整理" badge={`${detail.tags.length} 个标签`}/><div className="literature-chip-row">{detail.collections.map((collection: Row) => <span className="literature-chip" key={collection.id}><FolderOpen size={12}/>{collection.name}</span>)}{detail.tags.map((tag: Row) => <span className="literature-chip" key={tag.id}><Tag size={12}/>{tag.name}</span>)}{!detail.tags.length && !detail.collections.length && <small>尚未添加集合或标签</small>}</div>{detail.notes && <p className="literature-notes">{detail.notes}</p>}</section>
-          <section className="literature-section"><SectionHeading title="处理任务" badge={`${detail.jobs.length} 条`}/>{detail.jobs.length ? <div className="literature-job-list">{detail.jobs.map((job: Row) => <div className="literature-job" key={job.id}><span className={`literature-status status-${job.status}`}>{jobLabel[job.status] || job.status}</span><span>{job.progress.message || job.error_message || '等待任务执行'}</span><small>{job.job_type === 'index' ? `请求 ${job.usage_request_count || 0}/${job.budget_requests} · token ${job.usage_tokens || 0}/${job.budget_tokens} · 用量 ${job.usage_status}${job.usage_pending_count ? ' · 有待结算请求' : ''}` : `尝试 ${job.attempt_count}/${job.max_attempts}`}</small>{canEdit && job.job_type === 'index' && ['queued','waiting_configuration','embedding','publishing'].includes(job.status) && <button className="row-action" onClick={() => cancelIndex(job.id)}>取消</button>}{canEdit && job.job_type === 'index' && ['failed','partial'].includes(job.status) && <button className="row-action" onClick={() => retryIndex(job.id)}>重试</button>}</div>)}</div> : <div className="literature-inline-empty">文献上传后会排入本地解析；Embedding 未配置时仍可进行关键词检索。</div>}</section>
+          <section className="literature-section"><SectionHeading title="处理任务" badge={`${detail.jobs.length} 条`}/>{detail.jobs.length ? <div className="literature-job-list">{detail.jobs.map((job: Row) => <div className="literature-job" key={job.id}><span className={`literature-status status-${job.status}`}>{jobLabel[job.status] || job.status}</span><span>{job.progress.message || job.error_message || '等待任务执行'}</span><small>{job.job_type === 'index' ? `请求 ${job.usage_request_count || 0}/${job.budget_requests} · token ${job.usage_tokens || 0}/${job.budget_tokens} · 用量 ${job.usage_status}${job.usage_pending_count ? ' · 有待结算请求' : ''}` : `尝试 ${job.attempt_count}/${job.max_attempts}`}</small>{canEdit && job.job_type === 'index' && ['queued','waiting_configuration','embedding','publishing'].includes(job.status) && <button className="row-action" onClick={() => cancelIndex(job.id)}>取消</button>}{canEdit && job.job_type === 'index' && ['failed','partial'].includes(job.status) && <button className="row-action" onClick={() => retryIndex(job.id)}>重试</button>}</div>)}</div> : <div className="literature-inline-empty">文献上传后先提取文字，再进行向量化。</div>}</section>
           <div className="literature-access-note"><ShieldCheck size={14}/>{canEdit ? '你是此文献的上传者或管理员，可以编辑书目信息、替换全文、移入回收站。' : '组织成员可查看和下载；只有上传者或管理员可以编辑。'}</div>
         </> : <EmptyDetail text="选择一篇文献查看书目、全文版本和处理状态。"/>}
       </section>}

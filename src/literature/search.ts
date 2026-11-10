@@ -205,26 +205,24 @@ function rankedKeyword(query: string, itemRows: Row[], itemIds: string[], limit:
 
 export async function searchLiterature(queryRaw: unknown, options: SearchOptions = {}): Promise<{ mode: string; fallbackReason: string; results: Row[]; usage: Row | null }> {
   const query = String(queryRaw || '').trim().slice(0, 1000);
-  if (!query) return { mode: 'keyword', fallbackReason: '', results: [] as Row[], usage: null };
-  const requestedMode = options.mode || 'hybrid';
+  if (!query) return { mode: 'semantic', fallbackReason: '', results: [] as Row[], usage: null };
+  const requestedMode = 'semantic';
   const limit = Math.max(1, Math.min(10, Number(options.limit || 10)));
   const scope = options.scope;
   const scoped = Boolean(scope && scope.allowAll !== true);
   const scopeItemIds = scoped && Array.isArray(scope?.itemIds) ? cleanIds(scope.itemIds) : undefined;
   const scopeCollectionIds = scoped && Array.isArray(scope?.collectionIds) ? cleanIds(scope.collectionIds) : undefined;
-  if (scoped && !scopeItemIds?.length && !scopeCollectionIds?.length) return { mode: 'keyword', fallbackReason: '此会话没有选择可检索的文献；空范围不会扩展到整个知识库。', results: [] as Row[], usage: null };
+  if (scoped && !scopeItemIds?.length && !scopeCollectionIds?.length) return { mode: 'semantic', fallbackReason: '此会话没有选择可检索的文献；空范围不会扩展到整个知识库。', results: [] as Row[], usage: null };
   const actor = options.actor || { id: '', role: 'RESEARCHER' };
   const itemRows = listLiteratureRows({ q: '', collectionId: options.collectionId, actorId: actor.id, role: actor.role, unbounded: true,
     scopeItemIds: scopeItemIds?.length ? scopeItemIds : undefined, scopeCollectionIds: scopeCollectionIds?.length ? scopeCollectionIds : undefined });
   const itemIds = itemRows.map(row => String(row.id));
-  if (scoped && !itemRows.length) return { mode: 'keyword', fallbackReason: '所选范围内没有可检索文献。', results: [], usage: null };
-  const keyword = rankedKeyword(query, itemRows, itemIds, 40, options.persistEvidence === true && requestedMode === 'keyword', actor.id);
-  if (requestedMode === 'keyword') return { mode: 'keyword', fallbackReason: '', results: keyword.slice(0, limit), usage: null };
+  if (scoped && !itemRows.length) return { mode: 'semantic', fallbackReason: '所选范围内没有可检索文献。', results: [], usage: null };
 
   const status = getLiteratureEmbeddingStatus();
   const profile = getActiveLiteratureProfile();
   if (!profile || status.embedding.status !== 'configured' || status.qdrant.status !== 'configured') {
-    return { mode: 'keyword', fallbackReason: 'Embedding 或 Qdrant 未配置；本次已降级为关键词检索。', results: keyword.slice(0, limit), usage: null };
+    return { mode: 'semantic', fallbackReason: 'Embedding 或 Qdrant 未配置；无法进行向量检索。', results: [], usage: null };
   }
   const generationRows: Row[] = [];
   for (let offset = 0; offset < itemIds.length; offset += 400) {
@@ -237,12 +235,12 @@ export async function searchLiterature(queryRaw: unknown, options: SearchOptions
   const latest = new Map<string, Row>();
   for (const generation of generationRows) if (!latest.has(String(generation.item_id))) latest.set(String(generation.item_id), generation);
   const gens = [...latest.values()];
-  if (!gens.length) return { mode: 'keyword', fallbackReason: '所选文献尚无当前版本的已发布向量索引；本次使用关键词检索。', results: keyword.slice(0, limit), usage: null };
+  if (!gens.length) return { mode: 'semantic', fallbackReason: '所选文献尚无当前版本的已发布向量索引；请先建立索引。', results: [], usage: null };
 
   const begin = beginQuery(actor.id, String(profile.id), getLiteratureEmbeddingConfig());
-  if (!begin.ok) return { mode: 'keyword', fallbackReason: begin.reason === 'query_usage_unknown' ? '本日文献查询用量存在未确认请求；为避免重复计费，语义请求已停止并降级为关键词。'
-    : begin.reason === 'query_request_budget' ? '已达到本日语义查询请求数上限；本次使用关键词检索。' : '已达到本日语义查询 token 预算；本次使用关键词检索。',
-    results: keyword.slice(0, limit), usage: { status: begin.reason } };
+  if (!begin.ok) return { mode: 'semantic', fallbackReason: begin.reason === 'query_usage_unknown' ? '本日文献查询用量存在未确认请求；为避免重复计费，语义请求已停止。'
+    : begin.reason === 'query_request_budget' ? '已达到本日语义查询请求数上限。' : '已达到本日语义查询 token 预算。',
+    results: [], usage: { status: begin.reason } };
   const config = getLiteratureEmbeddingConfig();
   const embeddingProfile = { baseUrl: config.baseUrl, model: config.model, dimensions: Number(profile.dimensions), sendDimensions: config.sendDimensions,
     maxInputChars: config.maxInputChars, timeoutMs: config.timeoutMs };
@@ -256,8 +254,8 @@ export async function searchLiterature(queryRaw: unknown, options: SearchOptions
     const failure = error instanceof EmbeddingRequestError ? error : undefined;
     settleQuery(actor.id, String(profile.id), begin.date, { status: failure?.usageOutcome === 'rejected' ? 'known' : 'unknown', totalTokens: null }, failure?.code || 'query_embedding_unknown');
     settled = true;
-    return { mode: 'keyword', fallbackReason: failure?.usageOutcome === 'rejected' ? 'Embedding 服务拒绝本次查询；本次已降级为关键词。'
-      : 'Embedding 查询用量未知；本日后续语义请求已停止，本次降级为关键词。', results: keyword.slice(0, limit), usage: { status: failure?.usageOutcome || 'unknown' } };
+    return { mode: 'semantic', fallbackReason: failure?.usageOutcome === 'rejected' ? 'Embedding 服务拒绝本次查询。'
+      : 'Embedding 查询用量未知；本日后续语义请求已停止。', results: [], usage: { status: failure?.usageOutcome || 'unknown' } };
   }
   if ((vectorResult.model && vectorResult.model !== config.model) || vectorResult.usage.status !== 'known') {
     if (vectorResult.usage.status !== 'known' && settled) {
@@ -265,8 +263,8 @@ export async function searchLiterature(queryRaw: unknown, options: SearchOptions
         stop_reason='query_usage_missing',updated_at=datetime('now') WHERE owner_id=? AND profile_id=? AND usage_date=?`)
         .run(actor.id, profile.id, begin.date);
     }
-    return { mode: 'keyword', fallbackReason: vectorResult.usage.status === 'unknown' ? 'Embedding 未返回可核验用量；本日后续语义请求已停止，本次降级为关键词。'
-      : 'Embedding 响应模型与活动 profile 不符；本次降级为关键词。', results: keyword.slice(0, limit), usage: { status: vectorResult.usage.status } };
+    return { mode: 'semantic', fallbackReason: vectorResult.usage.status === 'unknown' ? 'Embedding 未返回可核验用量；本日后续语义请求已停止。'
+      : 'Embedding 响应模型与活动 profile 不符。', results: [], usage: { status: vectorResult.usage.status } };
   }
 
   const vectorByChunk = new Map<string, { row: Row; score: number }>();
@@ -287,8 +285,8 @@ export async function searchLiterature(queryRaw: unknown, options: SearchOptions
       }
     }
   } catch {
-    return { mode: 'keyword', fallbackReason: 'Qdrant 当前不可用；本次 Embedding 请求已按实际用量记录，并退回关键词检索。',
-      results: keyword.slice(0, limit), usage: { status: 'known', requestCounted: true, tokens: vectorResult.usage.totalTokens, responseId: vectorResult.usage.responseId } };
+    return { mode: 'semantic', fallbackReason: 'Qdrant 当前不可用；本次 Embedding 请求已按实际用量记录。',
+      results: [], usage: { status: 'known', requestCounted: true, tokens: vectorResult.usage.totalTokens, responseId: vectorResult.usage.responseId } };
   }
   const vectorResults: Row[] = [...vectorByChunk.values()].sort((a, b) => b.score - a.score).slice(0, 40).map((item, index): Row => ({
     ...item.row, vectorRank: index + 1, retrieval: 'semantic' }));
@@ -306,32 +304,11 @@ export async function searchLiterature(queryRaw: unknown, options: SearchOptions
       evidenceRefId: options.persistEvidence ? createEvidence({ ...row, created_by: actor.id }, String(profile.id)) : undefined }));
     return results.length ? { mode: 'semantic', fallbackReason: '', results,
       usage: { status: 'known', requestCounted: true, tokens: vectorResult.usage.totalTokens, responseId: vectorResult.usage.responseId } }
-      : { mode: 'keyword', fallbackReason: '语义索引没有通过当前版本与 SHA 校验的结果；本次仅返回关键词匹配。', results: keyword.slice(0, limit),
+      : { mode: 'semantic', fallbackReason: '语义索引没有通过当前版本与 SHA 校验的结果。', results: [],
         usage: { status: 'known', requestCounted: true, tokens: vectorResult.usage.totalTokens, responseId: vectorResult.usage.responseId } };
   }
-  const keywordRank = new Map(keyword.map((row, index) => [String(row.chunkId), index + 1]));
-  const vectorRank = new Map(semanticResults.map((row, index) => [String(row.chunkId), index + 1]));
-  const all = new Map<string, Row>();
-  for (const row of [...keyword, ...semanticResults]) all.set(String(row.chunkId), row);
-  const fused: Row[] = [...all.values()].map((row): Row => ({ ...row, rrfScore: (keywordRank.has(String(row.chunkId)) ? 1 / (60 + keywordRank.get(String(row.chunkId))!) : 0)
-    + (vectorRank.has(String(row.chunkId)) ? 1 / (60 + vectorRank.get(String(row.chunkId))!) : 0),
-    retrieval: keywordRank.has(String(row.chunkId)) && vectorRank.has(String(row.chunkId)) ? 'hybrid' : vectorRank.has(String(row.chunkId)) ? 'semantic' : 'keyword' }))
-    .sort((a, b) => b.rrfScore - a.rrfScore);
-  const perItem = new Map<string, number>();
-  const results: Row[] = [];
-  for (const row of fused) {
-    const literatureId = String(row.literatureId || row.itemId || row.id);
-    const count = perItem.get(literatureId) || 0;
-    if (count >= 3) continue;
-    perItem.set(literatureId, count + 1);
-    if (options.persistEvidence) row.evidenceRefId = createEvidence({ ...row, created_by: actor.id }, String(profile.id));
-    results.push(row);
-    if (results.length >= limit) break;
-  }
-  return { mode: vectorResults.length ? requestedMode : 'keyword', fallbackReason: vectorResults.length ? '' : '语义索引没有通过当前版本与 SHA 校验的结果；本次仅返回关键词匹配。',
-    results, usage: { status: 'known', requestCounted: true, tokens: vectorResult.usage.totalTokens, responseId: vectorResult.usage.responseId } };
+  throw new Error('无效的文献检索模式');
 }
-
 export function resolveLiteratureScope(scope: LiteratureScope | undefined) {
   if (!scope) return [] as string[];
   const ids = scopeIds(scope);

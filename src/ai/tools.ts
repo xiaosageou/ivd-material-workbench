@@ -181,7 +181,7 @@ export function buildAssistantTools(context: ToolContext, onToolResult?: (toolNa
       object({ query: Type.String({ minLength: 1, maxLength: 1000 }), mode: Type.Optional(Type.Union([Type.Literal('keyword'),Type.Literal('semantic'),Type.Literal('hybrid')])),
         limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 10 })) }), async args => {
         if (!context.literatureScope) return { results: [], fallbackReason: '本会话没有显式选择文献范围。' };
-        const result = await searchLiterature(args.query, { mode: args.mode || 'hybrid', limit: args.limit || 8, actor: context.actor,
+        const result = await searchLiterature(args.query, { mode: 'semantic', limit: args.limit || 8, actor: context.actor,
           scope: context.literatureScope, persistEvidence: true });
         return { mode: result.mode, fallbackReason: result.fallbackReason, usage: result.usage,
           results: result.results.map(item => ({ evidenceRefId: item.evidenceRefId, literatureId: item.literatureId || item.itemId || item.id,

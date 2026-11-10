@@ -525,7 +525,10 @@ async function processJob(job: Row) {
   }
   if (!renewLease(job, { stage: 'parsing', message: '正在读取文献文件', fileName: source.original_name })) return;
   try {
+    let lastLeaseCheck = Date.now();
     const parsed = await parseLiteratureFile(String(source.original_name), bytes, () => {
+      if (Date.now() - lastLeaseCheck < 3000) return false;
+      lastLeaseCheck = Date.now();
       if (cancelled(job)) return true;
       const leaseOk = renewLease(job, { stage: 'parsing', message: '正在逐页解析全文', fileName: source.original_name });
       return !leaseOk || !currentLease({ ...job, configSnapshot: { fileSha256: digest } });
@@ -534,10 +537,9 @@ async function processJob(job: Row) {
     const saved = persistExtraction(job, source, parsed);
     if (saved) {
       heartbeat('online', null, { lastJobId: job.id, outcome: parsed.status });
-      const config = getLiteratureEmbeddingConfig();
       const profile = getActiveLiteratureProfile();
-      if (config.autoIndex && profile) {
-        const item = db.prepare('SELECT id,created_by FROM literature_items WHERE id=? AND deleted_at IS NULL').get(job.item_id) as Row | undefined;
+      if (profile) {
+        const item = db.prepare('SELECT * FROM literature_items WHERE id=? AND deleted_at IS NULL').get(job.item_id) as Row | undefined;
         if (item) {
           try { enqueueLiteratureIndex({ id: String(item.created_by), role: 'RESEARCHER' }, item); }
           catch (indexError) { console.warn('Automatic literature indexing was not queued:', (indexError as Error).message.slice(0, 250)); }

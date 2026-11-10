@@ -82,6 +82,17 @@ export function installLiteratureRoutes(app: Express, requireAuth: RequestHandle
     db.prepare(`UPDATE literature_jobs SET status='queued',updated_at=datetime('now'),progress_json=?
       WHERE job_type IN ('index','rebuild') AND status='waiting_configuration' AND cancel_requested=0`)
       .run(JSON.stringify({ stage: 'queued', message: '向量化配置已保存，任务重新排队' }));
+    if (saved.profile) {
+      const waiting = db.prepare(`SELECT i.* FROM literature_items i
+        WHERE i.deleted_at IS NULL AND (i.current_version_id IS NULL OR EXISTS
+          (SELECT 1 FROM literature_extractions e WHERE e.version_id=i.current_version_id AND e.status NOT IN ('failed','unsupported')))
+        AND NOT EXISTS (SELECT 1 FROM literature_index_generations g WHERE g.item_id=i.id AND g.version_id IS i.current_version_id
+          AND g.profile_id=? AND g.status IN ('queued','building','ready'))`).all(saved.profile.id) as Row[];
+      for (const item of waiting) {
+        try { enqueueLiteratureIndex({ id: String(item.created_by), role: 'RESEARCHER' }, item); }
+        catch (error) { console.warn('Existing literature indexing not queued:', item.id, (error as Error).message.slice(0, 200)); }
+      }
+    }
     res.json(saved);
   }));
   app.post('/api/admin/literature/embedding-config/test', requireAuth, requireAdmin, route(async (_req, res) => {
@@ -120,14 +131,13 @@ export function installLiteratureRoutes(app: Express, requireAuth: RequestHandle
 
   app.get('/api/literature', requireAuth, route(async (req, res) => {
     const query = optional(req.query.q);
-    const requestedMode = ['hybrid','semantic','keyword'].includes(String(req.query.mode)) ? String(req.query.mode) as 'hybrid'|'semantic'|'keyword' : 'keyword';
     const filters = { collectionId: optional(req.query.collectionId), year: optional(req.query.year), author: optional(req.query.author),
       status: optional(req.query.status), actorId: actor(req).id, role: actor(req).role };
-    if (!query || requestedMode === 'keyword') {
+    if (!query) {
       const rows = listLiteratureRows({ q: query, ...filters });
-      return res.json({ rows, stats: getLiteratureStats(), search: { mode: 'keyword', fallbackReason: '' } });
+      return res.json({ rows, stats: getLiteratureStats(), search: { mode: 'semantic', fallbackReason: '' } });
     }
-    const result = await searchLiterature(query, { mode: requestedMode, collectionId: filters.collectionId, actor: actor(req), scope: { allowAll: true }, limit: 10 });
+    const result = await searchLiterature(query, { mode: 'semantic', collectionId: filters.collectionId, actor: actor(req), scope: { allowAll: true }, limit: 10 });
     const rowsByLiteratureId = new Map<string, Row>();
     for (const hit of result.results) {
       const literatureId = String(hit.literatureId || hit.itemId || hit.id);
@@ -147,7 +157,7 @@ export function installLiteratureRoutes(app: Express, requireAuth: RequestHandle
     const query = optional(req.query.q);
     if (!query || query.length > 1000) return res.status(400).json({ error: '请输入不超过 1,000 字的检索内容' });
     const requestedMode = ['hybrid','semantic','keyword'].includes(String(req.query.mode)) ? String(req.query.mode) as 'hybrid'|'semantic'|'keyword' : 'hybrid';
-    const result = await searchLiterature(query, { mode: requestedMode, collectionId: optional(req.query.collectionId), actor: actor(req), scope: { allowAll: true }, limit: 10 });
+    const result = await searchLiterature(query, { mode: 'semantic', collectionId: optional(req.query.collectionId), actor: actor(req), scope: { allowAll: true }, limit: 10 });
     res.json({ mode: result.mode, fallbackReason: result.fallbackReason, usage: result.usage, results: result.results.map(row => ({
       id: row.literatureId || row.itemId || row.id, literatureId: row.literatureId || row.itemId || row.id,
       itemId: row.itemId || row.item_id || row.id, title: row.title, authors: row.authors || JSON.parse(String(row.authors_json || '[]')), publicationYear: row.publication_year,

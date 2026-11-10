@@ -179,6 +179,15 @@ if (current < 14) {
   finally { db.exec('PRAGMA foreign_keys=ON'); }
 }
 
+if (current < 15) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.exec(readFileSync(path.resolve('migrations/015_vector_literature.sql'), 'utf8'));
+    db.prepare('INSERT INTO schema_migrations(version) VALUES (?)').run(15);
+    db.exec('COMMIT'); current = 15;
+  } catch (error) { db.exec('ROLLBACK'); throw error; }
+}
+
 export function transaction<T>(work: () => T): T {
   db.exec('BEGIN IMMEDIATE');
   try {

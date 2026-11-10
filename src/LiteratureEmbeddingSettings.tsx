@@ -68,9 +68,9 @@ export default function LiteratureEmbeddingSettings({ notify }: Props) {
         <label>文档前缀<input value={values.documentPrefix || ''} onChange={event => update('documentPrefix', event.target.value)} placeholder="默认留空"/></label>
         <label>查询前缀<input value={values.queryPrefix || ''} onChange={event => update('queryPrefix', event.target.value)} placeholder="默认留空"/></label>
         <label className="literature-check"><input type="checkbox" checked={values.sendDimensions === true} onChange={event => update('sendDimensions', event.target.checked)}/>请求中发送 dimensions 参数（仅在兼容服务明确支持时启用）</label>
-        <label className="literature-check"><input type="checkbox" checked={values.autoIndex === true} onChange={event => update('autoIndex', event.target.checked)}/>本地解析完成后自动索引文献（发送文献内容；研发报告由独立 Worker 同步）</label>
+
       </div>
-      <div className="literature-data-transfer-note"><Info size={15}/><span>文献自动索引会发送书目、摘要和本地解析正文片段。研发报告知识由独立队列发送报告标题、说明、当前有效结构化观察及相应证据摘录；不发送报告附件、原始数据附件或聊天会话。两类向量存入不同 Qdrant 集合；profile 的模型、维度或前缀改变会生成隔离索引空间。</span></div>
+      <div className="literature-data-transfer-note"><Info size={15}/><span>文献解析后自动向量化会发送书目、摘要和本地解析正文片段。研发报告知识由独立队列发送报告标题、说明、当前有效结构化观察及相应证据摘录；不发送报告附件、原始数据附件或聊天会话。两类向量存入不同 Qdrant 集合；profile 的模型、维度或前缀改变会生成隔离索引空间。</span></div>
       <p className="literature-data-transfer-note">语义查询按登录成员、Embedding profile 与 UTC 日期累计请求和 provider 实报 token；未知用量会阻断当日后续语义外呼。该统计不估算 token 费用。</p>
       {error && <div className="literature-error">{error}</div>}
       {connection && <div className={`literature-connection-result ${connection.ok ? 'ok' : 'failed'}`}><Server size={15}/><span>{connection.ok ? `合成文本测试通过 · ${connection.embedding?.dimensions} 维 · 用量 ${connection.embedding?.usage}` : connection.message || connection.embedding?.message || `Embedding：${connection.embedding?.status || '失败'}；Qdrant：${connection.vector?.status || '未检测'}`}</span></div>}

@@ -29,7 +29,7 @@ type Row = Record<string, any>;
 
 export const DEFAULT_LITERATURE_EMBEDDING_CONFIG: LiteratureEmbeddingConfig = {
   baseUrl: '', model: '', dimensions: 0, distance: 'Cosine', documentPrefix: '', queryPrefix: '', sendDimensions: false,
-  autoIndex: false, batchSize: 16, maxInputChars: 6000, timeoutMs: 45_000, taskTokenBudget: 100_000, maxRequests: 200,
+  autoIndex: true, batchSize: 16, maxInputChars: 6000, timeoutMs: 45_000, taskTokenBudget: 100_000, maxRequests: 200,
   queryTokenBudget: 20_000, queryMaxRequests: 100,
 };
 
@@ -60,7 +60,7 @@ export function getLiteratureEmbeddingConfig(): LiteratureEmbeddingConfig {
       dimensions: Number.isSafeInteger(value.dimensions) && Number(value.dimensions) >= 1 && Number(value.dimensions) <= 65_536 ? Number(value.dimensions) : 0,
       distance: ['Cosine', 'Dot', 'Euclid', 'Manhattan'].includes(String(value.distance)) ? value.distance as LiteratureEmbeddingConfig['distance'] : 'Cosine',
       documentPrefix: String(value.documentPrefix || '').slice(0, 500), queryPrefix: String(value.queryPrefix || '').slice(0, 500),
-      sendDimensions: value.sendDimensions === true, autoIndex: value.autoIndex === true,
+      sendDimensions: value.sendDimensions === true, autoIndex: true,
       batchSize: clamp(value.batchSize, 1, 64, DEFAULT_LITERATURE_EMBEDDING_CONFIG.batchSize),
       maxInputChars: clamp(value.maxInputChars, 256, 20_000, DEFAULT_LITERATURE_EMBEDDING_CONFIG.maxInputChars),
       timeoutMs: clamp(value.timeoutMs, 5_000, 300_000, DEFAULT_LITERATURE_EMBEDDING_CONFIG.timeoutMs),
@@ -95,7 +95,7 @@ export function saveLiteratureEmbeddingConfig(actorId: string, input: Partial<Li
     documentPrefix: input.documentPrefix === undefined ? previous.documentPrefix : String(input.documentPrefix || '').slice(0, 500),
     queryPrefix: input.queryPrefix === undefined ? previous.queryPrefix : String(input.queryPrefix || '').slice(0, 500),
     sendDimensions: input.sendDimensions === undefined ? previous.sendDimensions : input.sendDimensions === true,
-    autoIndex: input.autoIndex === undefined ? previous.autoIndex : input.autoIndex === true,
+    autoIndex: true,
     batchSize: input.batchSize === undefined ? previous.batchSize : clamp(input.batchSize, 1, 64, previous.batchSize),
     maxInputChars: input.maxInputChars === undefined ? previous.maxInputChars : clamp(input.maxInputChars, 256, 20_000, previous.maxInputChars),
     timeoutMs: input.timeoutMs === undefined ? previous.timeoutMs : clamp(input.timeoutMs, 5_000, 300_000, previous.timeoutMs),
